@@ -38,7 +38,7 @@ export const Sidebar: React.FC = () => {
 
     if (role === "arb") {
       return [
-        { label: "Overview", path: "/my-application", icon: LayoutDashboard },
+        { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "My Application", path: "/my-application", icon: FileText },
         { label: "Help", path: "/help", icon: HelpCircle },
       ];
