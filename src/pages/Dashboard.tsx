@@ -8,10 +8,12 @@ import {
   Users,
   Layers,
   MapPin,
-  TrendingUp,
   Search,
   FileCheck,
   AlertCircle,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -21,32 +23,40 @@ interface Stats {
   activeTitles: number;
 }
 
-interface RecentDoc {
-  titleNumber: string;
-  beneficiary: string;
-  location: string;
+interface AppRecord {
+  id: string;
+  userName: string;
+  userBarangay: string;
   status: ApplicationStatus;
-  date: string;
+  submittedAt: string;
 }
+
+type SortField = "userName" | "userBarangay" | "status" | "submittedAt";
+type SortDir = "asc" | "desc";
 
 export const Dashboard: React.FC = () => {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats>({
-    totalFarmers: 12300, // mock base from the mockup
-    totalLandsHectares: 508.4, // mock base from the mockup
-    activeTitles: 342, // mock base from the mockup
+    totalFarmers: 0,
+    totalLandsHectares: 0,
+    activeTitles: 0,
   });
-  const [recentVerifications, setRecentVerifications] = useState<RecentDoc[]>(
-    [],
-  );
+  const [applications, setApplications] = useState<AppRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchError, setSearchError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // Sorting state
+  const [sortField, setSortField] = useState<SortField>("submittedAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // Load live values from Firestore
   useEffect(() => {
     const fetchLiveStats = async () => {
       try {
+        setLoading(true);
+
         // Load ARBs (Farmers)
         const farmersQuery = query(
           collection(db, "users"),
@@ -66,69 +76,30 @@ export const Dashboard: React.FC = () => {
           sumHectares += Number(data.areaHectares || 0);
         });
 
-        // Use live count if available, merge with mock bases so client mockup visual remains familiar
         setStats({
-          totalFarmers: farmersCount > 0 ? farmersCount + 12000 : 12300,
-          totalLandsHectares:
-            sumHectares > 0 ? Number(sumHectares.toFixed(1)) : 508.4,
-          activeTitles: activeTitlesCount > 0 ? activeTitlesCount + 340 : 342,
+          totalFarmers: farmersCount,
+          totalLandsHectares: Number(sumHectares.toFixed(1)),
+          activeTitles: activeTitlesCount,
         });
 
-        // Fetch recent records to load in dashboard table
-        const recentArr: RecentDoc[] = [];
-        titlesSnap.forEach((doc) => {
-          const data = doc.data();
-          recentArr.push({
-            titleNumber: data.titleNumber,
-            beneficiary: data.beneficiaryName || "Unknown Beneficiary",
-            location: data.municipality || "Isabela",
-            status: "verified" as ApplicationStatus,
-            date: data.encodedAt
-              ? new Date(data.encodedAt).toLocaleDateString("en-US", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })
-              : "Recently",
+        // Load all applications for the registry table
+        const appsSnap = await getDocs(collection(db, "applications"));
+        const appList: AppRecord[] = [];
+        appsSnap.forEach((d) => {
+          const data = d.data();
+          appList.push({
+            id: d.id,
+            userName: data.userName || "Unknown",
+            userBarangay: data.userBarangay || "—",
+            status: data.status as ApplicationStatus,
+            submittedAt: data.submittedAt || "",
           });
         });
-
-        // Baseline pre-seed records to support beautiful demonstration values matching mockup!
-        const mockupSeedList: RecentDoc[] = [
-          {
-            titleNumber: "TCT-456789",
-            beneficiary: "Malaya Farmers Assoc.",
-            location: "Isabela",
-            status: "verified",
-            date: "15 Oct 2026",
-          },
-          {
-            titleNumber: "TCT-122934",
-            beneficiary: "San Jose Agrarian Union",
-            location: "Bago City",
-            status: "pending",
-            date: "31 Oct 2026",
-          },
-          {
-            titleNumber: "TCT-774012",
-            beneficiary: "Negros Sugar Planters",
-            location: "La Carlota",
-            status: "under_review",
-            date: "01 Nov 2026",
-          },
-          {
-            titleNumber: "TCT-991204",
-            beneficiary: "Caballero Farm Guild",
-            location: "Kabankalan",
-            status: "disputed",
-            date: "02 Nov 2026",
-          },
-        ];
-
-        // Combine live entries with our fallback mock visuals
-        setRecentVerifications([...recentArr, ...mockupSeedList].slice(0, 5));
+        setApplications(appList);
       } catch (err) {
         console.error("Error loading dashboard data:", err);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -148,20 +119,47 @@ export const Dashboard: React.FC = () => {
     navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
   };
 
-  // If role is raw ARB user, show their custom Application Page by default so they only focus on their details
+  // Sorting logic
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedApplications = [...applications].sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    const aVal = a[sortField] || "";
+    const bVal = b[sortField] || "";
+    if (aVal < bVal) return -1 * dir;
+    if (aVal > bVal) return 1 * dir;
+    return 0;
+  });
+
+  const SortIcon: React.FC<{ field: SortField }> = ({ field }) => {
+    if (sortField !== field)
+      return <ArrowUpDown size={12} className="text-slate-300 ml-1" />;
+    return sortDir === "asc" ? (
+      <ChevronUp size={12} className="text-emerald-700 ml-1" />
+    ) : (
+      <ChevronDown size={12} className="text-emerald-700 ml-1" />
+    );
+  };
+
+  // If role is raw ARB user, show their custom overview
   if (profile?.role === "arb") {
-    // Redirect to customized My Application page
     return (
       <div className="flex h-screen bg-slate-50">
         <Sidebar />
         <div className="flex-1 flex flex-col overflow-y-auto">
-          {/* Main User Workspace Area */}
           <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between">
             <h1 className="text-xl font-bold text-slate-800 m-0">
               My Workspace
             </h1>
             <p className="text-xs text-slate-500 font-medium">
-              Log as Farmer (ARB)
+              Logged as Farmer (ARB)
             </p>
           </header>
 
@@ -189,7 +187,7 @@ export const Dashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="border border-slate-200 bg-emerald-50/40 rounded-xl p-5 text-left">
                 <h3 className="font-bold text-sm text-emerald-900 mb-1">
-                  Land Verification details
+                  Land Verification Details
                 </h3>
                 <p className="text-xs text-slate-650 leading-relaxed">
                   Your designated land Surveyor encodes exact geographic lot
@@ -233,7 +231,7 @@ export const Dashboard: React.FC = () => {
           <div className="flex items-center space-x-4">
             <div className="text-right">
               <p className="text-sm font-bold text-slate-900 m-0">
-                {profile?.name || "Maria Santos"}
+                {profile?.name || "Officer"}
               </p>
               <p className="text-[10px] text-slate-500 uppercase font-semibold m-0">
                 {profile?.role || "Administrator"}
@@ -260,7 +258,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="text-xs font-semibold bg-emerald-50 text-emerald-800 px-4 py-2 rounded-xl flex items-center space-x-2 border border-emerald-100">
               <div className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse"></div>
-              <span>Live Registry: Oct 1 - Nov 30, 2026</span>
+              <span>Live Registry</span>
             </div>
           </div>
 
@@ -275,14 +273,11 @@ export const Dashboard: React.FC = () => {
                 <h3 className="text-3xl font-extrabold text-slate-900">
                   {stats.totalLandsHectares}ha
                 </h3>
-                <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">
-                  +2.1% YoY
-                </span>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  {stats.totalFarmers.toLocaleString()} Farmers Supported
+                  {stats.totalFarmers} Farmers Registered
                 </p>
               </div>
-              <div className="h-12 w-12 rounded-2xl bg-emerald-55 bg-emerald-50 text-emerald-800 flex items-center justify-center">
+              <div className="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-800 flex items-center justify-center">
                 <Layers size={22} />
               </div>
             </div>
@@ -294,11 +289,8 @@ export const Dashboard: React.FC = () => {
                   Active ARBs Registered
                 </span>
                 <h3 className="text-3xl font-extrabold text-slate-900">
-                  {stats.totalFarmers.toLocaleString()}
+                  {stats.totalFarmers}
                 </h3>
-                <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">
-                  Residency Validated
-                </span>
                 <p className="text-[10px] text-slate-400 mt-1">
                   Negros Occidental Municipalities
                 </p>
@@ -312,16 +304,13 @@ export const Dashboard: React.FC = () => {
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm text-left flex items-start justify-between relative overflow-hidden group hover:shadow-md transition-shadow">
               <div className="space-y-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Active ARBO Titles
+                  Active CLOA Titles
                 </span>
                 <h3 className="text-3xl font-extrabold text-slate-900">
                   {stats.activeTitles}
                 </h3>
-                <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-full">
-                  CLOA Awarded
-                </span>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Verified duplicates scanned
+                  Land titles encoded by surveyors
                 </p>
               </div>
               <div className="h-12 w-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center">
@@ -330,63 +319,8 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Middle Analytics Block / Trends */}
+          {/* Middle: Quick Search + Stats */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Trends Visualization Block */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm text-left lg:col-span-2 flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Application Progression Trends
-                  </h3>
-                  <p className="text-[10px] text-slate-400">
-                    Monthly progress of CLOA distributions
-                  </p>
-                </div>
-                <TrendingUp size={16} className="text-emerald-800" />
-              </div>
-
-              {/* CSS Bar Chart visual */}
-              <div className="flex-1 flex items-end justify-between h-48 pt-6 border-b border-slate-100">
-                <div className="flex flex-col items-center space-y-2 w-1/5 group">
-                  <div className="text-[10px] font-bold text-slate-600 hidden group-hover:block transition-all">
-                    40
-                  </div>
-                  <div className="bg-emerald-800/40 w-full rounded-t-lg transition-all h-[40%] group-hover:bg-emerald-800"></div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">
-                    Under Review
-                  </span>
-                </div>
-                <div className="flex flex-col items-center space-y-2 w-1/5 group">
-                  <div className="text-[10px] font-bold text-slate-600 hidden group-hover:block transition-all">
-                    65
-                  </div>
-                  <div className="bg-amber-800/40 w-full rounded-t-lg transition-all h-[65%] group-hover:bg-amber-800"></div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">
-                    Pending
-                  </span>
-                </div>
-                <div className="flex flex-col items-center space-y-2 w-1/5 group">
-                  <div className="text-[10px] font-bold text-slate-600 hidden group-hover:block transition-all">
-                    85
-                  </div>
-                  <div className="bg-emerald-800 w-full rounded-t-lg transition-all h-[85%] group-hover:scale-105"></div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">
-                    Verified
-                  </span>
-                </div>
-                <div className="flex flex-col items-center space-y-2 w-1/5 group">
-                  <div className="text-[10px] font-bold text-slate-600 hidden group-hover:block transition-all">
-                    15
-                  </div>
-                  <div className="bg-rose-800/40 w-full rounded-t-lg transition-all h-[15%] group-hover:bg-rose-800"></div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">
-                    Disputed
-                  </span>
-                </div>
-              </div>
-            </div>
-
             {/* Quick OCT/TCT Land Verification block */}
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm text-left flex flex-col">
               <h3 className="text-sm font-bold text-slate-900 mb-1">
@@ -428,21 +362,61 @@ export const Dashboard: React.FC = () => {
                 </button>
               </form>
             </div>
+
+            {/* Status Distribution Summary */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm text-left lg:col-span-2">
+              <h3 className="text-sm font-bold text-slate-900 mb-1">
+                Application Status Distribution
+              </h3>
+              <p className="text-[10px] text-slate-400 mb-6">
+                Current breakdown of all ARB applications by stage
+              </p>
+
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                {([
+                  { key: "under_review", label: "Under Review", color: "bg-orange-500" },
+                  { key: "pending", label: "Pending (Admin)", color: "bg-amber-500" },
+                  { key: "verified", label: "Verified", color: "bg-emerald-500" },
+                  { key: "awarded", label: "Awarded", color: "bg-blue-500" },
+                  { key: "disputed", label: "Disputed", color: "bg-rose-500" },
+                ] as const).map((item) => {
+                  const count = applications.filter(
+                    (a) => a.status === item.key,
+                  ).length;
+                  return (
+                    <div
+                      key={item.key}
+                      className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-center"
+                    >
+                      <div className="flex items-center justify-center space-x-1.5 mb-2">
+                        <div className={`h-2 w-2 rounded-full ${item.color}`}></div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          {item.label}
+                        </span>
+                      </div>
+                      <span className="text-2xl font-extrabold text-slate-900">
+                        {count}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
-          {/* Recent Land Verifications Table */}
+          {/* Applications Registry Table */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm text-left overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  Recent Verifications Registry
+                  Applications Registry
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  Recently processed agrarian land distribution items
+                  All ARB applications — click column headers to sort
                 </p>
               </div>
               <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                Live Registry
+                {applications.length} Total
               </span>
             </div>
 
@@ -450,58 +424,110 @@ export const Dashboard: React.FC = () => {
               <table className="min-w-full divide-y divide-slate-100 text-sm">
                 <thead className="bg-slate-50 text-slate-550 uppercase tracking-widest text-[9px] font-bold">
                   <tr>
-                    <th scope="col" className="px-6 py-4">
-                      Title Number
+                    <th
+                      scope="col"
+                      className="px-6 py-4 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort("userName")}
+                    >
+                      <span className="flex items-center">
+                        Beneficiary Name
+                        <SortIcon field="userName" />
+                      </span>
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-4 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort("userBarangay")}
+                    >
+                      <span className="flex items-center">
+                        Barangay
+                        <SortIcon field="userBarangay" />
+                      </span>
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-4 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort("status")}
+                    >
+                      <span className="flex items-center">
+                        Status
+                        <SortIcon field="status" />
+                      </span>
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-4 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                      onClick={() => handleSort("submittedAt")}
+                    >
+                      <span className="flex items-center">
+                        Submitted Date
+                        <SortIcon field="submittedAt" />
+                      </span>
                     </th>
                     <th scope="col" className="px-6 py-4">
-                      Beneficiary
-                    </th>
-                    <th scope="col" className="px-6 py-4">
-                      Location (Negros Occ.)
-                    </th>
-                    <th scope="col" className="px-6 py-4">
-                      Processing Status
-                    </th>
-                    <th scope="col" className="px-6 py-4">
-                      Verification Date
+                      App ID
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {recentVerifications.map((item, idx) => (
-                    <tr
-                      key={idx}
-                      className="hover:bg-slate-50/50 transition-colors"
-                    >
-                      <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">
-                        {item.titleNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {item.beneficiary}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center space-x-1 text-slate-500">
-                          <MapPin size={12} className="text-slate-400" />
-                          <span>{item.location}</span>
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <StatusBadge status={item.status} />
-                      </td>
-                      <td className="px-6 py-4 text-slate-400 whitespace-nowrap text-xs">
-                        {item.date}
+                  {loading ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-6 py-10 text-center text-slate-400"
+                      >
+                        <div className="flex flex-col items-center space-y-2">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-800 border-t-transparent"></div>
+                          <span className="text-xs font-semibold">
+                            Loading registry...
+                          </span>
+                        </div>
                       </td>
                     </tr>
-                  ))}
-                  {recentVerifications.length === 0 && (
+                  ) : sortedApplications.length === 0 ? (
                     <tr>
                       <td
                         colSpan={5}
                         className="px-6 py-10 text-center text-slate-400 italic"
                       >
-                        No land verification records found yet.
+                        No application records found yet.
                       </td>
                     </tr>
+                  ) : (
+                    sortedApplications.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-slate-50/50 transition-colors"
+                      >
+                        <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">
+                          {item.userName}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="inline-flex items-center space-x-1 text-slate-500">
+                            <MapPin size={12} className="text-slate-400" />
+                            <span>{item.userBarangay}</span>
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <StatusBadge status={item.status} />
+                        </td>
+                        <td className="px-6 py-4 text-slate-400 whitespace-nowrap text-xs">
+                          {item.submittedAt
+                            ? new Date(item.submittedAt).toLocaleDateString(
+                                "en-US",
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                },
+                              )
+                            : "—"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-400 font-mono">
+                          {item.id}
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>

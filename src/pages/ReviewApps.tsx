@@ -43,9 +43,11 @@ export const ReviewApps: React.FC = () => {
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
   const [notesInput, setNotesInput] = useState("");
+
+  // Admin defaults to "pending" (Admin Stage) so they see apps awaiting their approval
   const [activeTab, setActiveTab] = useState<
     "under_review" | "pending" | "resolved"
-  >("under_review");
+  >(profile?.role === "admin" ? "pending" : "under_review");
 
   // Modal for previewing documents
   const [activePreviewDoc, setActivePreviewDoc] = useState<{
@@ -79,7 +81,7 @@ export const ReviewApps: React.FC = () => {
         const defaultSelect = list.find((a) => {
           if (activeTab === "under_review") return a.status === "under_review";
           if (activeTab === "pending") return a.status === "pending";
-          return a.status === "verified" || a.status === "disputed";
+          return a.status === "verified" || a.status === "awarded" || a.status === "disputed";
         });
         if (defaultSelect) {
           setSelectedApp(defaultSelect);
@@ -105,7 +107,7 @@ export const ReviewApps: React.FC = () => {
     const defaultSelect = apps.find((a) => {
       if (activeTab === "under_review") return a.status === "under_review";
       if (activeTab === "pending") return a.status === "pending";
-      return a.status === "verified" || a.status === "disputed";
+      return a.status === "verified" || a.status === "awarded" || a.status === "disputed";
     });
     if (defaultSelect) {
       setSelectedApp(defaultSelect);
@@ -157,7 +159,7 @@ export const ReviewApps: React.FC = () => {
     return apps.filter((a) => {
       if (activeTab === "under_review") return a.status === "under_review";
       if (activeTab === "pending") return a.status === "pending";
-      return a.status === "verified" || a.status === "disputed";
+      return a.status === "verified" || a.status === "awarded" || a.status === "disputed";
     });
   };
 
