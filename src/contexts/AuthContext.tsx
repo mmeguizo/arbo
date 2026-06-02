@@ -14,6 +14,8 @@ export interface UserProfile {
   age: number;
   contact: string;
   barangay: string;
+  municipality: string;
+  province: string;
   role: UserRole;
   createdAt: string;
   isActive?: boolean;

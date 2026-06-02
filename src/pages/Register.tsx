@@ -18,7 +18,10 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
+  Globe,
 } from "lucide-react";
+
+import localityData from "../data/locality.json";
 
 type DocumentField = "cedula" | "birthCert" | "brgyCert" | "picture";
 
@@ -65,7 +68,8 @@ export const Register: React.FC = () => {
   const [contact, setContact] = useState("");
   const [address, setAddress] = useState("");
 
-  // Location cascade (PSGC API — Negros Occidental fixed)
+  // Location cascade (supports both Negros provinces)
+  const [province, setProvince] = useState("");
   const [municipality, setMunicipality] = useState("");
   const [municipalityCode, setMunicipalityCode] = useState("");
   const [barangay, setBarangay] = useState("");
@@ -98,60 +102,29 @@ export const Register: React.FC = () => {
     picture: "",
   });
 
-  // Load Negros Occidental municipalities on mount
+  const provinceOptions = localityData.provinces.map((p) => p.name);
+
+  // Load municipalities when province changes
   React.useEffect(() => {
-    const loadMunicipalities = async () => {
-      setLocationLoading(true);
-      try {
-        const sampleData = {
-          data: [
-            {"code":"0630200000","name":"City of Bacolod "},
-            {"code":"0604502000","name":"City of Bago"},
-            {"code":"0604503000","name":"Binalbagan"},
-            {"code":"0604504000","name":"City of Cadiz"},
-            {"code":"0604505000","name":"Calatrava"},
-            {"code":"0604506000","name":"Candoni"},
-            {"code":"0604507000","name":"Cauayan"},
-            {"code":"0604508000","name":"Enrique B. Magalona"},
-            {"code":"0604509000","name":"City of Escalante"},
-            {"code":"0604510000","name":"City of Himamaylan"},
-            {"code":"0604511000","name":"Hinigaran"},
-            {"code":"0604512000","name":"Hinoba-an"},
-            {"code":"0604513000","name":"Ilog"},
-            {"code":"0604514000","name":"Isabela"},
-            {"code":"0604515000","name":"City of Kabankalan"},
-            {"code":"0604516000","name":"City of La Carlota"},
-            {"code":"0604517000","name":"La Castellana"},
-            {"code":"0604518000","name":"Manapla"},
-            {"code":"0604519000","name":"Moises Padilla"},
-            {"code":"0604520000","name":"Murcia"},
-            {"code":"0604521000","name":"Pontevedra"},
-            {"code":"0604522000","name":"Pulupandan"},
-            {"code":"0604523000","name":"City of Sagay"},
-            {"code":"0604524000","name":"City of San Carlos"},
-            {"code":"0604525000","name":"San Enrique"},
-            {"code":"0604526000","name":"City of Silay"},
-            {"code":"0604527000","name":"City of Sipalay"},
-            {"code":"0604528000","name":"City of Talisay"},
-            {"code":"0604529000","name":"Toboso"},
-            {"code":"0604530000","name":"Valladolid"},
-            {"code":"0604531000","name":"City of Victorias"},
-            {"code":"0604532000","name":"Salvador Benedicto"}
-          ]
-        };
-        const items = getPsgcItems(sampleData as unknown as PsgcListResponse<PsgcLocationItem>);
-        setMunicipalities(
-          [...items].sort((a, b) => a.name.localeCompare(b.name)),
-        );
-      } catch (e) {
-        setMunicipalities([]);
-        console.error("Failed to load municipalities:", e);
-      } finally {
-        setLocationLoading(false);
-      }
-    };
-    loadMunicipalities();
-  }, []);
+    setMunicipality("");
+    setMunicipalityCode("");
+    setBarangays([]);
+    setBarangay("");
+
+    if (!province) {
+      setMunicipalities([]);
+      return;
+    }
+
+    const selected = localityData.provinces.find((p) => p.name === province);
+    if (selected) {
+      setMunicipalities(
+        selected.municipalities
+          .map((m) => ({ code: m.code, name: m.name }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+    }
+  }, [province]);
 
   // Load barangays whenever municipality selection changes
   React.useEffect(() => {
@@ -164,7 +137,7 @@ export const Register: React.FC = () => {
       setLocationLoading(true);
       try {
         const res = await fetch(
-          `https://psgc.cloud/api/v2/cities-municipalities/${encodeURIComponent(municipalityCode)}/barangays`,
+          `https://psgc.gitlab.io/api/cities-municipalities/${encodeURIComponent(municipalityCode)}/barangays/`,
         );
         if (!res.ok) {
           throw new Error(`Barangays request failed: ${res.status}`);
@@ -238,8 +211,8 @@ export const Register: React.FC = () => {
   const handleNext = () => {
     setError(null);
     if (step === 1) {
-      if (!name || !age || !contact || !address || !municipality || !barangay) {
-        setError("All personal details are required.");
+      if (!name || !age || !contact || !address || !province || !municipality || !barangay) {
+        setError("All personal details including province are required.");
         return;
       }
       setStep(2);
@@ -304,6 +277,7 @@ export const Register: React.FC = () => {
         contact: contact.trim(),
         municipality: municipality.trim(),
         barangay: barangay.trim(),
+        province: province.trim(),
         role: "arb",
         createdAt: new Date().toISOString(),
       });
@@ -313,8 +287,10 @@ export const Register: React.FC = () => {
         applicationId: appRefId,
         userId: user.uid,
         userName: name.trim(),
+        userEmail: email.trim(),
         userMunicipality: municipality.trim(),
         userBarangay: barangay.trim(),
+        userProvince: province.trim(),
         status: "under_review",
         submittedAt: new Date().toISOString(),
         reviewedByStaff: null,
@@ -483,6 +459,27 @@ export const Register: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Province
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <Globe size={18} />
+                    </div>
+                    <select
+                      required
+                      value={province}
+                      onChange={(e) => setProvince(e.target.value)}
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium appearance-none"
+                    >
+                      <option value="">Select province</option>
+                      {provinceOptions.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
                     City / Municipality
                   </label>
                   <div className="relative">
@@ -499,12 +496,12 @@ export const Register: React.FC = () => {
                         setMunicipalityCode(e.target.value);
                         setMunicipality(selected?.name ?? "");
                       }}
-                      disabled={locationLoading && municipalities.length === 0}
-                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium appearance-none"
+                      disabled={!province || locationLoading}
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium appearance-none disabled:opacity-50"
                     >
                       <option value="">
-                        {locationLoading && municipalities.length === 0
-                          ? "Loading..."
+                        {!province
+                          ? "Select province first"
                           : "Select municipality"}
                       </option>
                       {municipalities.map((m) => (

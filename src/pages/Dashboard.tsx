@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Sidebar } from "../components/Sidebar";
 import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
-import { collection, query, getDocs, where, onSnapshot, limit, orderBy } from "firebase/firestore";
+import { collection, query, where, onSnapshot, limit, orderBy } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
   Users,
@@ -14,9 +14,7 @@ import {
   ArrowUpDown,
   ChevronUp,
   ChevronDown,
-  Hash,
-  Map,
-  Calendar,
+  FileText,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -30,6 +28,8 @@ interface AppRecord {
   id: string;
   userName: string;
   userBarangay: string;
+  userMunicipality: string;
+  userProvince: string;
   status: ApplicationStatus;
   submittedAt: string;
 }
@@ -41,6 +41,7 @@ interface LandTitle {
   lotNumber: string;
   areaHectares: number;
   municipality: string;
+  province: string;
   geoLat: string;
   geoLng: string;
   encodedAt: string;
@@ -108,6 +109,8 @@ export const Dashboard: React.FC = () => {
           id: d.id,
           userName: data.userName || "Unknown",
           userBarangay: data.userBarangay || "—",
+          userMunicipality: data.userMunicipality || "",
+          userProvince: data.userProvince || "",
           status: data.status as ApplicationStatus,
           submittedAt: data.submittedAt || "",
         });
@@ -169,7 +172,112 @@ export const Dashboard: React.FC = () => {
 
   const selectedTitle = selectedApp ? landTitles.find((t) => t.applicationId === selectedApp.id) : null;
 
-  // If role is raw ARB user, show their custom overview
+  // Staff-specific dashboard
+  if (profile?.role === "staff") {
+    const underReviewCount = applications.filter(a => a.status === "under_review").length;
+    return (
+      <div className="flex h-screen bg-slate-50 overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex flex-col overflow-y-auto">
+          <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between">
+            <h1 className="text-xl font-bold text-slate-800 m-0">
+              Staff Workspace
+            </h1>
+            <p className="text-xs text-slate-500 font-medium">
+              Logged as DAR Staff
+            </p>
+          </header>
+          <main className="p-8 max-w-4xl space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+              <h2 className="text-lg font-bold text-slate-900 mb-2">
+                Welcome, {profile?.name}
+              </h2>
+              <p className="text-slate-500 text-xs leading-relaxed mb-6">
+                You are logged in as a DAR Staff member. Review ARB applications,
+                verify documents, and forward qualified applicants to the Admin for final approval.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-center">
+                  <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Under Review</span>
+                  <p className="text-2xl font-extrabold text-orange-900 mt-1">{underReviewCount}</p>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Pending Admin</span>
+                  <p className="text-2xl font-extrabold text-amber-900 mt-1">{applications.filter(a => a.status === "pending").length}</p>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Resolved</span>
+                  <p className="text-2xl font-extrabold text-emerald-900 mt-1">{applications.filter(a => a.status === "verified" || a.status === "awarded").length}</p>
+                </div>
+              </div>
+              <Link
+                to="/review-apps"
+                className="inline-flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 py-3 px-6 text-sm font-semibold text-white transition-all shadow-md cursor-pointer"
+              >
+                <span>Go to Review Applications</span>
+                <FileText size={16} />
+              </Link>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  // Surveyor-specific dashboard
+  if (profile?.role === "surveyor") {
+    const awardedCount = applications.filter(a => a.status === "awarded").length;
+    const totalTitles = landTitles.length;
+    return (
+      <div className="flex h-screen bg-slate-50 overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex flex-col overflow-y-auto">
+          <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between">
+            <h1 className="text-xl font-bold text-slate-800 m-0">
+              Surveyor Workspace
+            </h1>
+            <p className="text-xs text-slate-500 font-medium">
+              Logged as DAR Surveyor
+            </p>
+          </header>
+          <main className="p-8 max-w-4xl space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+              <h2 className="text-lg font-bold text-slate-900 mb-2">
+                Welcome, {profile?.name}
+              </h2>
+              <p className="text-slate-500 text-xs leading-relaxed mb-6">
+                Encode land title information for approved ARB applicants.
+                Verify GPS coordinates and register title numbers in the system.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-center">
+                  <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Verified (Ready)</span>
+                  <p className="text-2xl font-extrabold text-indigo-900 mt-1">{applications.filter(a => a.status === "verified").length}</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Awarded (Done)</span>
+                  <p className="text-2xl font-extrabold text-blue-900 mt-1">{awardedCount}</p>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Total Titles</span>
+                  <p className="text-2xl font-extrabold text-emerald-900 mt-1">{totalTitles}</p>
+                </div>
+              </div>
+              <Link
+                to="/land-titles"
+                className="inline-flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 py-3 px-6 text-sm font-semibold text-white transition-all shadow-md cursor-pointer"
+              >
+                <span>Go to Land Title Entry</span>
+                <MapPin size={16} />
+              </Link>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  // ARB-specific dashboard
   if (profile?.role === "arb") {
     return (
       <div className="flex h-screen bg-slate-50">
@@ -486,6 +594,9 @@ export const Dashboard: React.FC = () => {
                       </span>
                     </th>
                     <th scope="col" className="px-6 py-4">
+                      Province
+                    </th>
+                    <th scope="col" className="px-6 py-4">
                       App ID
                     </th>
                   </tr>
@@ -494,7 +605,7 @@ export const Dashboard: React.FC = () => {
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-6 py-10 text-center text-slate-400"
                       >
                         <div className="flex flex-col items-center space-y-2">
@@ -508,7 +619,7 @@ export const Dashboard: React.FC = () => {
                   ) : sortedApplications.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-6 py-10 text-center text-slate-400 italic"
                       >
                         No application records found yet.
@@ -545,6 +656,9 @@ export const Dashboard: React.FC = () => {
                               )
                             : "—"}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500">
+                          {item.userProvince || "Negros Occidental"}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-400 font-mono">
                           {item.id}
                         </td>
@@ -580,7 +694,15 @@ export const Dashboard: React.FC = () => {
                 <div>
                   <h2 className="text-xl font-extrabold text-slate-900">{selectedApp.userName}</h2>
                   <p className="text-sm text-slate-500 flex items-center mt-1">
-                    <MapPin size={14} className="mr-1"/> {selectedApp.userBarangay}
+                    <MapPin size={14} className="mr-1"/>
+                    {selectedApp.userBarangay}
+                    {(selectedApp.userMunicipality || selectedApp.userProvince) && (
+                      <span className="ml-1 text-slate-400">
+                        — {selectedApp.userMunicipality && `${selectedApp.userMunicipality}`}
+                        {selectedApp.userMunicipality && selectedApp.userProvince && ", "}
+                        {selectedApp.userProvince}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <StatusBadge status={selectedApp.status} />
@@ -607,10 +729,17 @@ export const Dashboard: React.FC = () => {
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Encoded Location</span>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Municipality</span>
                         <span className="font-bold text-slate-900 flex items-center">
                           <MapPin size={14} className="text-emerald-700 mr-1"/>
                           {selectedTitle.municipality}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Province</span>
+                        <span className="font-bold text-slate-900 flex items-center">
+                          <MapPin size={14} className="text-emerald-700 mr-1"/>
+                          {(selectedTitle as any).province || "Negros Occidental"}
                         </span>
                       </div>
                     </div>

@@ -4,7 +4,6 @@ import { Sidebar } from "../components/Sidebar";
 import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
 import {
   collection,
-  getDocs,
   updateDoc,
   doc,
   query,
@@ -27,6 +26,8 @@ interface Application {
   userId: string;
   userName: string;
   userBarangay: string;
+  userMunicipality: string;
+  userProvince: string;
   status: ApplicationStatus;
   submittedAt: string;
   notes: string;
@@ -279,6 +280,14 @@ export const ReviewApps: React.FC = () => {
                       <span className="font-semibold text-slate-800">
                         {selectedApp.userBarangay}
                       </span>
+                      {(selectedApp.userMunicipality || selectedApp.userProvince) && (
+                        <span className="text-slate-400">
+                          {" — "}
+                          {selectedApp.userMunicipality && `${selectedApp.userMunicipality}`}
+                          {selectedApp.userMunicipality && selectedApp.userProvince && ", "}
+                          {selectedApp.userProvince}
+                        </span>
+                      )}
                     </p>
                   </div>
 
@@ -460,9 +469,9 @@ export const ReviewApps: React.FC = () => {
                       {selectedApp.status === "pending" && (
                         <button
                           onClick={() => updateStatus("verified")}
-                          className="flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-lg cursor-pointer"
+                          className="flex items-center space-x-2 rounded-xl bg-emerald-700 hover:bg-emerald-900 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-lg border-2 border-emerald-400 cursor-pointer"
                         >
-                          <CheckCircle2 size={16} className="text-amber-400" />
+                          <CheckCircle2 size={16} className="text-amber-300" />
                           <span>Verify and Finalize Title Eligibility</span>
                         </button>
                       )}
