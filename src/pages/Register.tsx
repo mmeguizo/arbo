@@ -29,6 +29,28 @@ interface UploadedDocumentUrls {
   picture: string | null;
 }
 
+interface PsgcLocationItem {
+  code: string;
+  name: string;
+}
+
+interface PsgcListResponse<T> {
+  data: T[];
+}
+
+const NEGROS_OCCIDENTAL_PROVINCE_CODE = "0604500000";
+
+const getPsgcItems = (
+  payload: PsgcLocationItem[] | PsgcListResponse<PsgcLocationItem>,
+) => {
+  const items = Array.isArray(payload) ? payload : payload.data;
+
+  return items.map((item) => ({
+    code: item.code,
+    name: item.name.trim(),
+  }));
+};
+
 export const Register: React.FC = () => {
   const navigate = useNavigate();
   const { refreshProfile } = useAuth();
@@ -49,12 +71,8 @@ export const Register: React.FC = () => {
   const [municipality, setMunicipality] = useState("");
   const [municipalityCode, setMunicipalityCode] = useState("");
   const [barangay, setBarangay] = useState("");
-  const [municipalities, setMunicipalities] = useState<
-    { code: string; name: string }[]
-  >([]);
-  const [barangays, setBarangays] = useState<{ code: string; name: string }[]>(
-    [],
-  );
+  const [municipalities, setMunicipalities] = useState<PsgcLocationItem[]>([]);
+  const [barangays, setBarangays] = useState<PsgcLocationItem[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
 
   // Document Uploads (Simulated / Stored as Base64/urls for sandbox robustness)
@@ -87,19 +105,20 @@ export const Register: React.FC = () => {
     const loadMunicipalities = async () => {
       setLocationLoading(true);
       try {
-        const res = await fetch("https://psgc.cloud/api/v2/provinces");
-        const provinces: { code: string; name: string }[] = await res.json();
-        const negOcc = provinces.find((p) => p.name === "Negros Occidental");
-        if (negOcc) {
-          const res2 = await fetch(
-            `https://psgc.cloud/api/v2/provinces/${negOcc.code}/cities-municipalities`,
-          );
-          const items: { code: string; name: string }[] = await res2.json();
-          setMunicipalities(
-            [...items].sort((a, b) => a.name.localeCompare(b.name)),
-          );
+        const res = await fetch(
+          `https://psgc.cloud/api/v2/provinces/${NEGROS_OCCIDENTAL_PROVINCE_CODE}/cities-municipalities`,
+        );
+        if (!res.ok) {
+          throw new Error(`Municipalities request failed: ${res.status}`);
         }
+        const payload: PsgcLocationItem[] | PsgcListResponse<PsgcLocationItem> =
+          await res.json();
+        const items = getPsgcItems(payload);
+        setMunicipalities(
+          [...items].sort((a, b) => a.name.localeCompare(b.name)),
+        );
       } catch (e) {
+        setMunicipalities([]);
         console.error("Failed to load municipalities:", e);
       } finally {
         setLocationLoading(false);
@@ -119,12 +138,18 @@ export const Register: React.FC = () => {
       setLocationLoading(true);
       try {
         const res = await fetch(
-          `https://psgc.cloud/api/v2/cities-municipalities/${municipalityCode}/barangays`,
+          `https://psgc.cloud/api/v2/cities-municipalities/${encodeURIComponent(municipalityCode)}/barangays`,
         );
-        const items: { code: string; name: string }[] = await res.json();
+        if (!res.ok) {
+          throw new Error(`Barangays request failed: ${res.status}`);
+        }
+        const payload: PsgcLocationItem[] | PsgcListResponse<PsgcLocationItem> =
+          await res.json();
+        const items = getPsgcItems(payload);
         setBarangays([...items].sort((a, b) => a.name.localeCompare(b.name)));
         setBarangay("");
       } catch (e) {
+        setBarangays([]);
         console.error("Failed to load barangays:", e);
       } finally {
         setLocationLoading(false);
