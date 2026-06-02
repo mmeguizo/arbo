@@ -17,7 +17,10 @@ import {
   PowerOff,
   Power,
   KeyRound,
+  Globe,
 } from "lucide-react";
+
+import localityData from "../data/locality.json";
 
 interface UserProfile {
   uid: string;
@@ -25,6 +28,8 @@ interface UserProfile {
   email: string;
   role: "arb" | "staff" | "surveyor" | "admin";
   barangay: string;
+  municipality: string;
+  province: string;
   createdAt: string;
   isActive?: boolean;
 }
@@ -40,7 +45,9 @@ export const AdminUsers: React.FC = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<"staff" | "surveyor" | "admin">("staff");
+  const [province, setProvince] = useState("Negros Occidental");
   const [barangay, setBarangay] = useState("Isabela");
+  const [municipality, setMunicipality] = useState("");
 
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -61,6 +68,8 @@ export const AdminUsers: React.FC = () => {
             email: u.email || "",
             role: u.role as "staff" | "surveyor" | "admin",
             barangay: u.barangay || "",
+            municipality: u.municipality || "",
+            province: u.province || "Negros Occidental",
             createdAt: u.createdAt || "",
             isActive: u.isActive !== false, // default true
           });
@@ -129,6 +138,8 @@ export const AdminUsers: React.FC = () => {
         name: name.trim(),
         email: email.trim().toLowerCase(),
         role: role,
+        province: province,
+        municipality: municipality,
         barangay: barangay,
         createdAt: new Date().toISOString(),
       };
@@ -330,17 +341,53 @@ export const AdminUsers: React.FC = () => {
                 </select>
               </div>
 
-              {/* Assign Municipality/Barangay */}
+              {/* Province */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Jurisdiction Branch office
+                  Province
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Globe size={14} />
+                  </div>
+                  <select
+                    required
+                    value={province}
+                    onChange={(e) => setProvince(e.target.value)}
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
+                  >
+                    {localityData.provinces.map((p) => (
+                      <option key={p.name} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Municipality */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Municipality / City
                 </label>
                 <input
                   type="text"
                   required
+                  value={municipality}
+                  onChange={(e) => setMunicipality(e.target.value)}
+                  placeholder="Kabankalan City"
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+                />
+              </div>
+
+              {/* Office */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Office / District
+                </label>
+                <input
+                  type="text"
                   value={barangay}
                   onChange={(e) => setBarangay(e.target.value)}
-                  placeholder="Isabela / Kabankalan Branch"
+                  placeholder="Isabela Branch Office"
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
                 />
               </div>
@@ -372,7 +419,7 @@ export const AdminUsers: React.FC = () => {
             </h3>
             <p className="text-[10px] text-slate-400 mb-5 leading-normal">
               Roster of active personnel configured for municipal validation and
-              land parcel surveying within Negros Occidental.
+              land parcel surveying across Negros provinces.
             </p>
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -392,7 +439,10 @@ export const AdminUsers: React.FC = () => {
                           Official User
                         </th>
                         <th scope="col" className="px-5 py-3">
-                          Jurisdiction
+                          Province
+                        </th>
+                        <th scope="col" className="px-5 py-3">
+                          Municipality
                         </th>
                         <th scope="col" className="px-5 py-3">
                           Role Status
@@ -424,7 +474,10 @@ export const AdminUsers: React.FC = () => {
                             </div>
                           </td>
                           <td className="px-5 py-3 whitespace-nowrap text-slate-600 font-bold">
-                            {u.barangay}
+                            {u.province}
+                          </td>
+                          <td className="px-5 py-3 whitespace-nowrap text-slate-600 font-bold">
+                            {u.municipality || u.barangay}
                           </td>
                           <td className="px-5 py-3 whitespace-nowrap">
                             <span
@@ -470,10 +523,10 @@ export const AdminUsers: React.FC = () => {
                         </tr>
                       ))}
 
-                      {users.length === 0 && (
+                        {users.length === 0 && (
                         <tr>
                           <td
-                            colSpan={4}
+                            colSpan={6}
                             className="px-5 py-8 text-center text-slate-405 italic"
                           >
                             No secondary official accounts registered yet.

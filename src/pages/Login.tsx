@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../firebase/config";
-import { LogIn, Lock, Mail, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { LogIn, Lock, Mail, AlertCircle, Eye, EyeOff, KeyRound } from "lucide-react";
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -10,7 +10,30 @@ export const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const navigate = useNavigate();
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError("Please enter your email address first.");
+      return;
+    }
+    setResetLoading(true);
+    setError(null);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setResetSent(true);
+    } catch (err: any) {
+      if (err.code === "auth/user-not-found") {
+        setError("No account found with this email address.");
+      } else {
+        setError("Failed to send reset email. Please try again.");
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,26 +83,26 @@ export const Login: React.FC = () => {
               DAR PH Portal
             </span>
             <p className="text-[10px] text-emerald-200 tracking-widest leading-3 m-0">
-              Negros Occidental
+              Negros Occidental &amp; Oriental
             </p>
           </div>
         </div>
 
         <div className="space-y-4 my-auto z-10">
           <h2 className="text-3xl font-extrabold tracking-tight text-white leading-10">
-            Resilient Agrarian Communities in Negros Occidental
+            Resilient Agrarian Communities in Negros
           </h2>
           <p className="text-emerald-100 max-w-lg leading-relaxed text-sm">
-            Empowering Agrarian Reform Beneficiaries (ARBs) through transparent,
-            streamlined, and structured digital land title processing and
-            tracking.
+            Empowering Agrarian Reform Beneficiaries (ARBs) across Negros Occidental and
+            Negros Oriental through transparent, streamlined, and structured digital land
+            title processing and tracking.
           </p>
         </div>
 
         <div className="border-t border-emerald-800 pt-6 z-10">
           <p className="text-xs text-emerald-300">
             &copy; {new Date().getFullYear()} Department of Agrarian Reform,
-            Negros Occidental. All rights reserved.
+            Negros Occidental &amp; Oriental. All rights reserved.
           </p>
         </div>
       </div>
@@ -95,6 +118,13 @@ export const Login: React.FC = () => {
               Sign in to manage your DAR account and land records
             </p>
           </div>
+
+          {resetSent && (
+            <div className="mb-6 flex items-start space-x-2.5 rounded-xl bg-emerald-50 p-4 border border-emerald-200 text-sm text-emerald-700">
+              <KeyRound size={18} className="shrink-0 mt-0.5" />
+              <span className="font-semibold">Password reset email sent! Check your inbox.</span>
+            </div>
+          )}
 
           {error && (
             <div className="mb-6 flex items-start space-x-2.5 rounded-xl bg-red-50 p-4 border border-red-200 text-sm text-red-500">
@@ -123,13 +153,22 @@ export const Login: React.FC = () => {
               </div>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Password
-                </label>
-              </div>
-              <div className="relative rounded-xl shadow-sm">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={resetLoading}
+                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline transition-colors disabled:opacity-50"
+                  >
+                    <KeyRound size={12} className="inline mr-0.5" />
+                    Forgot Password?
+                  </button>
+                </div>
+                <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
                   <Lock size={18} />
                 </div>

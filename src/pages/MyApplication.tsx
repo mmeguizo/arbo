@@ -5,11 +5,11 @@ import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
 import {
   collection,
   query,
-  getDocs,
   where,
   limit,
   doc,
   updateDoc,
+  onSnapshot,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
@@ -97,15 +97,7 @@ export const MyApplication: React.FC = () => {
           [`documents.${type}`]: base64,
           status: newStatus,
         });
-        setApp((prev) =>
-          prev
-            ? {
-                ...prev,
-                documents: { ...prev.documents, [type]: base64 },
-                status: newStatus,
-              }
-            : prev,
-        );
+        // Listener will auto-update the UI
       } catch (err) {
         console.error("Failed to replace document:", err);
         setDocError("Failed to update document. Please try again.");
@@ -128,15 +120,7 @@ export const MyApplication: React.FC = () => {
         [`documents.${type}`]: null,
         status: newStatus,
       });
-      setApp((prev) =>
-        prev
-          ? {
-              ...prev,
-              documents: { ...prev.documents, [type]: null },
-              status: newStatus,
-            }
-          : prev,
-      );
+      // Listener will auto-update the UI
     } catch (err) {
       console.error("Failed to delete document:", err);
       setDocError("Failed to remove document. Please try again.");
@@ -146,41 +130,48 @@ export const MyApplication: React.FC = () => {
   };
 
   useEffect(() => {
-    const fetchApplicationInfo = async () => {
-      if (!user) return;
-      try {
-        setLoading(true);
-        // 1. Fetch user's application
-        const q = query(
-          collection(db, "applications"),
-          where("userId", "==", user.uid),
-          limit(1),
-        );
-        const qSnap = await getDocs(q);
-        if (!qSnap.empty) {
-          const appDoc = qSnap.docs[0];
-          const appData = appDoc.data() as ApplicationData;
-          setApp({ ...appData, applicationId: appDoc.id });
+    if (!user) return;
 
-          // 2. Fetch associated land title details if app is verified
-          const tQ = query(
-            collection(db, "landTitles"),
-            where("beneficiaryId", "==", user.uid),
-            limit(1),
-          );
-          const tSnap = await getDocs(tQ);
-          if (!tSnap.empty) {
-            setTitle(tSnap.docs[0].data() as LandTitle);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching applicant info:", err);
-      } finally {
-        setLoading(false);
+    setLoading(true);
+
+    // 1. Real-time listener for user's application
+    const q = query(
+      collection(db, "applications"),
+      where("userId", "==", user.uid),
+      limit(1),
+    );
+    const unsubApp = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        const appDoc = snap.docs[0];
+        const appData = appDoc.data() as ApplicationData;
+        setApp({ ...appData, applicationId: appDoc.id });
+      } else {
+        setApp(null);
       }
-    };
+      setLoading(false);
+    }, (err) => {
+      console.error("Error fetching application:", err);
+      setLoading(false);
+    });
 
-    fetchApplicationInfo();
+    // 2. Real-time listener for land title
+    const tQ = query(
+      collection(db, "landTitles"),
+      where("beneficiaryId", "==", user.uid),
+      limit(1),
+    );
+    const unsubTitle = onSnapshot(tQ, (snap) => {
+      if (!snap.empty) {
+        setTitle(snap.docs[0].data() as LandTitle);
+      } else {
+        setTitle(null);
+      }
+    });
+
+    return () => {
+      unsubApp();
+      unsubTitle();
+    };
   }, [user]);
 
   return (

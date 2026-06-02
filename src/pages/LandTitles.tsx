@@ -8,6 +8,8 @@ import {
   where,
   doc,
   setDoc,
+  updateDoc,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
@@ -19,53 +21,35 @@ import {
   Map,
   Compass,
   FileCheck,
+  Globe,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
+import localityData from "../data/locality.json";
+
 interface ApprovedApplicant {
-  id: string; // application id
+  id: string;
   userId: string;
   userName: string;
+  userMunicipality: string;
   userBarangay: string;
+  userProvince: string;
 }
 
-// Municipalities of Negros Occidental
-const MUNICIPALITIES = [
-  "Bago City",
-  "Isabela",
-  "La Carlota",
-  "Kabankalan",
-  "Cadiz City",
-  "Himamaylan",
-  "Sagay City",
-  "Silay City",
-  "Victorias City",
-  "San Carlos City",
-  "Pontevedra",
-  "Hinigaran",
-  "Pulupandan",
-  "Valladolid",
-  "San Enrique",
-  "Binalbagan",
-  "Moises Padilla",
-  "Calatrava",
-  "Toboso",
-  "Don Salvador Benedicto",
-  "Murcia",
-  "Talisay City",
-  "Manapla",
-  "E.B. Magalona",
-  "Cauayan",
-  "Ilog",
-  "Candoni",
-  "Hinoba-an",
-  "Sipalay City",
-].sort();
+const PAGE_SIZE = 20;
 
 export const LandTitles: React.FC = () => {
   const { profile } = useAuth();
   const [applicants, setApprovedApplicants] = useState<ApprovedApplicant[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
+
+  // Pagination
+  const [allApplicants, setAllApplicants] = useState<ApprovedApplicant[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Form Fields
   const [selectedAppId, setSelectedAppId] = useState("");
@@ -74,22 +58,25 @@ export const LandTitles: React.FC = () => {
   const [areaHectares, setAreaHectares] = useState("");
   const [geoLat, setGeoLat] = useState("");
   const [geoLng, setGeoLng] = useState("");
+  const [province, setProvince] = useState("");
   const [municipality, setMunicipality] = useState("");
 
   const [errorVisible, setError] = useState<string | null>(null);
 
+  const municipalities = province
+    ? localityData.provinces.find((p) => p.name === province)?.municipalities || []
+    : [];
+
   const fetchApprovedApplicants = async () => {
     try {
       setLoading(true);
-      // Fetch applications where status is verified
       const q = query(
         collection(db, "applications"),
         where("status", "==", "verified"),
+        orderBy("submittedAt", "desc"),
       );
       const snap = await getDocs(q);
-      const list: ApprovedApplicant[] = [];
 
-      // Also fetch already registered land titles to make sure we don't list already encoded ones
       const titleSnap = await getDocs(collection(db, "landTitles"));
       const encodedIds = new Set<string>();
       titleSnap.forEach((d) => {
@@ -97,6 +84,7 @@ export const LandTitles: React.FC = () => {
         if (data.applicationId) encodedIds.add(data.applicationId);
       });
 
+      const list: ApprovedApplicant[] = [];
       snap.forEach((d) => {
         const data = d.data();
         if (!encodedIds.has(d.id)) {
@@ -104,11 +92,18 @@ export const LandTitles: React.FC = () => {
             id: d.id,
             userId: data.userId,
             userName: data.userName || "Unknown",
-            userBarangay: data.userBarangay || "Isabela",
+            userMunicipality: data.userMunicipality || "",
+            userBarangay: data.userBarangay || "",
+            userProvince: data.userProvince || "Negros Occidental",
           });
         }
       });
-      setApprovedApplicants(list);
+
+      setAllApplicants(list);
+      setTotalCount(list.length);
+      setPage(0);
+      setApprovedApplicants(list.slice(0, PAGE_SIZE));
+      setHasMore(list.length > PAGE_SIZE);
       if (list.length > 0) {
         setSelectedAppId(list[0].id);
       }
@@ -123,6 +118,22 @@ export const LandTitles: React.FC = () => {
     fetchApprovedApplicants();
   }, []);
 
+  const handlePrevPage = () => {
+    if (page <= 0) return;
+    const newPage = page - 1;
+    setPage(newPage);
+    setApprovedApplicants(allApplicants.slice(newPage * PAGE_SIZE, (newPage + 1) * PAGE_SIZE));
+    setHasMore(true);
+  };
+
+  const handleNextPage = () => {
+    const newPage = page + 1;
+    if (newPage * PAGE_SIZE >= allApplicants.length) return;
+    setPage(newPage);
+    setApprovedApplicants(allApplicants.slice(newPage * PAGE_SIZE, (newPage + 1) * PAGE_SIZE));
+    setHasMore((newPage + 1) * PAGE_SIZE < allApplicants.length);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -135,6 +146,7 @@ export const LandTitles: React.FC = () => {
       !areaHectares ||
       !geoLat ||
       !geoLng ||
+      !province ||
       !municipality
     ) {
       setError("Please complete all geographic land fields.");
@@ -146,7 +158,6 @@ export const LandTitles: React.FC = () => {
     try {
       setLoading(true);
 
-      // Check duplicate Land Title Number (Professional squatter / multi-title application check!)
       const duplicateQuery = query(
         collection(db, "landTitles"),
         where("titleNumber", "==", cleanTitle),
@@ -161,8 +172,7 @@ export const LandTitles: React.FC = () => {
         return;
       }
 
-      // Selected applicant info
-      const selectedAppRecord = applicants.find((a) => a.id === selectedAppId);
+      const selectedAppRecord = allApplicants.find((a) => a.id === selectedAppId);
       if (!selectedAppRecord) {
         setError("Invalid applicant selected.");
         setLoading(false);
@@ -179,6 +189,7 @@ export const LandTitles: React.FC = () => {
         titleNumber: cleanTitle,
         lotNumber: lotNumber.trim(),
         areaHectares: Number(areaHectares),
+        province: province,
         municipality: municipality,
         geoLat: geoLat.trim(),
         geoLng: geoLng.trim(),
@@ -186,27 +197,23 @@ export const LandTitles: React.FC = () => {
         encodedAt: new Date().toISOString(),
       });
 
-      // Update the application status from 'verified' → 'awarded' so the ARB user
-      // sees their title has been officially encoded by the surveyor
-      const { updateDoc: updateDocFn } = await import("firebase/firestore");
       const appDocRef = doc(db, "applications", selectedAppRecord.id);
-      await updateDocFn(appDocRef, {
+      await updateDoc(appDocRef, {
         status: "awarded",
         surveyorEncodedAt: new Date().toISOString(),
         surveyorName: profile?.name || "Surveyor Officer",
         titleNumber: cleanTitle,
       });
 
-      // Clear Form and mark success
       setSubmitted(true);
       setTitleNumber("");
       setLotNumber("");
       setAreaHectares("");
       setGeoLat("");
       setGeoLng("");
+      setProvince("");
       setMunicipality("");
 
-      // Reload lists
       await fetchApprovedApplicants();
     } catch (err) {
       console.error("Failed to save land title mapping:", err);
@@ -216,12 +223,13 @@ export const LandTitles: React.FC = () => {
     }
   };
 
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
 
       <div className="flex-1 flex flex-col overflow-y-auto">
-        {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between z-10 shrink-0">
           <div className="text-left">
             <p className="text-[10px] uppercase font-bold tracking-widest text-emerald-800 m-0">
@@ -261,18 +269,17 @@ export const LandTitles: React.FC = () => {
               </div>
             )}
 
-            {loading && !selectedAppId ? (
+            {loading && allApplicants.length === 0 ? (
               <div className="py-8 text-center text-slate-400 italic text-xs">
                 Scanning eligible approved applications...
               </div>
-            ) : applicants.length === 0 ? (
+            ) : allApplicants.length === 0 ? (
               <div className="py-8 border border-dashed border-slate-250 rounded-2xl text-center text-slate-400 italic text-xs bg-slate-50/40">
                 No approved applications currently await surveyor mapping. Tell
                 municipal evaluators to verify candidate records.
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Select Candidate Approved application */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
                     Select Approved Beneficiary
@@ -282,17 +289,42 @@ export const LandTitles: React.FC = () => {
                     onChange={(e) => setSelectedAppId(e.target.value)}
                     className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
                   >
-                    {applicants.map((appItem) => (
-                      <option key={appItem.id} value={appItem.id}>
-                        {appItem.userName} ({appItem.userBarangay}) - ID:{" "}
-                        {appItem.id}
-                      </option>
-                    ))}
+                    {applicants.map((appItem) => {
+                      const appProvince = appItem.userProvince || "Negros Occidental";
+                      return (
+                        <option key={appItem.id} value={appItem.id}>
+                          {appItem.userName} ({appItem.userBarangay}, {appProvince}) - ID: {appItem.id}
+                        </option>
+                      );
+                    })}
                   </select>
+                  {totalCount > PAGE_SIZE && (
+                    <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
+                      <span>Showing {applicants.length} of {totalCount} applicants</span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={handlePrevPage}
+                          disabled={page === 0}
+                          className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <ChevronLeft size={14} />
+                        </button>
+                        <span className="font-semibold">Page {page + 1} of {totalPages}</span>
+                        <button
+                          type="button"
+                          onClick={handleNextPage}
+                          disabled={!hasMore}
+                          className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {/* Title Number */}
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
                       OCT / TCT Title Number
@@ -312,7 +344,6 @@ export const LandTitles: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Lot Number */}
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
                       Lot Number
@@ -334,10 +365,9 @@ export const LandTitles: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {/* Land Area */}
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                      Land Area Hectares (1 Hectare default)
+                      Land Area Hectares
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -355,10 +385,33 @@ export const LandTitles: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Negros Occ Municipality lists */}
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                      Municipality Location (Negros Occidental)
+                      Province
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <Globe size={16} />
+                      </div>
+                      <select
+                        required
+                        value={province}
+                        onChange={(e) => { setProvince(e.target.value); setMunicipality(""); }}
+                        className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
+                      >
+                        <option value="">-- Select Province --</option>
+                        {localityData.provinces.map((p) => (
+                          <option key={p.name} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Municipality / City
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -368,13 +421,12 @@ export const LandTitles: React.FC = () => {
                         required
                         value={municipality}
                         onChange={(e) => setMunicipality(e.target.value)}
-                        className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+                        disabled={!province}
+                        className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none disabled:opacity-50"
                       >
-                        <option value="">-- Choose Municipality --</option>
-                        {MUNICIPALITIES.map((mun) => (
-                          <option key={mun} value={mun}>
-                            {mun}
-                          </option>
+                        <option value="">{province ? "-- Choose Municipality --" : "Select province first"}</option>
+                        {municipalities.map((m) => (
+                          <option key={m.code} value={m.name}>{m.name}</option>
                         ))}
                       </select>
                     </div>
@@ -387,7 +439,6 @@ export const LandTitles: React.FC = () => {
                     <span>Exact Boundaries Geographic Coordinates (GPS)</span>
                   </div>
 
-                  {/* Coordinates: Latitude */}
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                       Latitude
@@ -402,7 +453,6 @@ export const LandTitles: React.FC = () => {
                     />
                   </div>
 
-                  {/* Coordinates: Longitude */}
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                       Longitude

@@ -1,292 +1,73 @@
 {
-    "data": [
-        {
-            "code": "0630200000",
-            "name": "City of Bacolod ",
-            "type": "City",
-            "district": "Lone",
-            "zip_code": "6100",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604502000",
-            "name": "City of Bago",
-            "type": "City",
-            "district": "4th",
-            "zip_code": "6104",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604503000",
-            "name": "Binalbagan",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604504000",
-            "name": "City of Cadiz",
-            "type": "City",
-            "district": "6th",
-            "zip_code": "6122",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604505000",
-            "name": "Calatrava",
-            "type": "Mun",
-            "district": "1st",
-            "zip_code": "6126",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604506000",
-            "name": "Candoni",
-            "type": "Mun",
-            "district": "3rd",
-            "zip_code": "6115",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604507000",
-            "name": "Cauayan",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "6126",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604508000",
-            "name": "Enrique B. Magalona",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "6114",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604509000",
-            "name": "City of Escalante",
-            "type": "City",
-            "district": "6th",
-            "zip_code": "6127",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604510000",
-            "name": "City of Himamaylan",
-            "type": "City",
-            "district": "3rd",
-            "zip_code": "6130",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604511000",
-            "name": "Hinigaran",
-            "type": "Mun",
-            "district": "3rd",
-            "zip_code": "6117",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604512000",
-            "name": "Hinoba-an",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604513000",
-            "name": "Ilog",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "6117",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604514000",
-            "name": "Isabela",
-            "type": "Mun",
-            "district": "1st",
-            "zip_code": "",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604515000",
-            "name": "City of Kabankalan",
-            "type": "City",
-            "district": "3rd",
-            "zip_code": "6110",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604516000",
-            "name": "City of La Carlota",
-            "type": "City",
-            "district": "3rd",
-            "zip_code": "6127",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604517000",
-            "name": "La Castellana",
-            "type": "Mun",
-            "district": "3rd",
-            "zip_code": "6128",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604518000",
-            "name": "Manapla",
-            "type": "Mun",
-            "district": "3rd",
-            "zip_code": "",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604519000",
-            "name": "Moises Padilla",
-            "type": "Mun",
-            "district": "3rd",
-            "zip_code": "6127",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604520000",
-            "name": "Murcia",
-            "type": "Mun",
-            "district": "3rd",
-            "zip_code": "6129",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604521000",
-            "name": "Pontevedra",
-            "type": "Mun",
-            "district": "3rd",
-            "zip_code": "6119",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604522000",
-            "name": "Pulupandan",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "6118",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604523000",
-            "name": "City of Sagay",
-            "type": "City",
-            "district": "1st",
-            "zip_code": "6122",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604524000",
-            "name": "City of San Carlos",
-            "type": "City",
-            "district": "2nd",
-            "zip_code": "6127",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604525000",
-            "name": "San Enrique",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "6117",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604526000",
-            "name": "City of Silay",
-            "type": "City",
-            "district": "2nd",
-            "zip_code": "6116",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604527000",
-            "name": "City of Sipalay",
-            "type": "City",
-            "district": "5th",
-            "zip_code": "6128",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604528000",
-            "name": "City of Talisay",
-            "type": "City",
-            "district": "3rd",
-            "zip_code": "6115",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604529000",
-            "name": "Toboso",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604530000",
-            "name": "Valladolid",
-            "type": "Mun",
-            "district": "5th",
-            "zip_code": "6130",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604531000",
-            "name": "City of Victorias",
-            "type": "City",
-            "district": "3rd",
-            "zip_code": "6129",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        },
-        {
-            "code": "0604532000",
-            "name": "Salvador Benedicto",
-            "type": "Mun",
-            "district": "3rd",
-            "zip_code": "6127",
-            "region": "Region VI (Western Visayas)",
-            "province": "Negros Occidental"
-        }
-    ]
+  "provinces": [
+    {
+      "name": "Negros Occidental",
+      "code": "060450000",
+      "municipalities": [
+        {"code": "0630200000", "name": "Bacolod City"},
+        {"code": "0604502000", "name": "Bago City"},
+        {"code": "0604503000", "name": "Binalbagan"},
+        {"code": "0604504000", "name": "Cadiz City"},
+        {"code": "0604505000", "name": "Calatrava"},
+        {"code": "0604506000", "name": "Candoni"},
+        {"code": "0604507000", "name": "Cauayan"},
+        {"code": "0604508000", "name": "E.B. Magalona"},
+        {"code": "0604509000", "name": "Escalante City"},
+        {"code": "0604510000", "name": "Himamaylan City"},
+        {"code": "0604511000", "name": "Hinigaran"},
+        {"code": "0604512000", "name": "Hinoba-an"},
+        {"code": "0604513000", "name": "Ilog"},
+        {"code": "0604514000", "name": "Isabela"},
+        {"code": "0604515000", "name": "Kabankalan City"},
+        {"code": "0604516000", "name": "La Carlota City"},
+        {"code": "0604517000", "name": "La Castellana"},
+        {"code": "0604518000", "name": "Manapla"},
+        {"code": "0604519000", "name": "Moises Padilla"},
+        {"code": "0604520000", "name": "Murcia"},
+        {"code": "0604521000", "name": "Pontevedra"},
+        {"code": "0604522000", "name": "Pulupandan"},
+        {"code": "0604523000", "name": "Sagay City"},
+        {"code": "0604524000", "name": "San Carlos City"},
+        {"code": "0604525000", "name": "San Enrique"},
+        {"code": "0604526000", "name": "Silay City"},
+        {"code": "0604527000", "name": "Sipalay City"},
+        {"code": "0604528000", "name": "Talisay City"},
+        {"code": "0604529000", "name": "Toboso"},
+        {"code": "0604530000", "name": "Valladolid"},
+        {"code": "0604531000", "name": "Victorias City"},
+        {"code": "0604532000", "name": "Salvador Benedicto"}
+      ]
+    },
+    {
+      "name": "Negros Oriental",
+      "code": "074600000",
+      "municipalities": [
+        {"code": "074601000", "name": "Amlan"},
+        {"code": "074602000", "name": "Ayungon"},
+        {"code": "074603000", "name": "Bacong"},
+        {"code": "074604000", "name": "Bais City"},
+        {"code": "074605000", "name": "Basay"},
+        {"code": "074606000", "name": "Bayawan City"},
+        {"code": "074607000", "name": "Bindoy"},
+        {"code": "074608000", "name": "Canlaon City"},
+        {"code": "074609000", "name": "Dauin"},
+        {"code": "074610000", "name": "Dumaguete City"},
+        {"code": "074611000", "name": "Guihulngan City"},
+        {"code": "074612000", "name": "Jimalalud"},
+        {"code": "074613000", "name": "La Libertad"},
+        {"code": "074614000", "name": "Mabinay"},
+        {"code": "074615000", "name": "Manjuyod"},
+        {"code": "074616000", "name": "Pamplona"},
+        {"code": "074617000", "name": "San Jose"},
+        {"code": "074618000", "name": "Santa Catalina"},
+        {"code": "074619000", "name": "Siaton"},
+        {"code": "074620000", "name": "Sibulan"},
+        {"code": "074621000", "name": "Tanjay City"},
+        {"code": "074622000", "name": "Tayasan"},
+        {"code": "074623000", "name": "Valencia"},
+        {"code": "074624000", "name": "Vallehermoso"},
+        {"code": "074625000", "name": "Zamboanguita"}
+      ]
+    }
+  ]
 }

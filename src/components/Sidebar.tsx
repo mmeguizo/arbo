@@ -87,12 +87,12 @@ export const Sidebar: React.FC = () => {
     <>
       {/* Mobile Top Header */}
       <div className="flex items-center justify-between border-b border-slate-200 bg-emerald-900 px-4 py-3 text-white md:hidden">
-        <div className="flex items-center space-x-2">
-          <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center text-emerald-900 font-bold text-xs p-1">
-            <span className="text-stone-900">DAR</span>
+          <div className="flex items-center space-x-2">
+            <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center text-emerald-900 font-bold text-xs p-1">
+              <span className="text-stone-900">DAR</span>
+            </div>
+            <span className="font-bold tracking-wider">DAR Portal</span>
           </div>
-          <span className="font-bold tracking-wider">DAR PH Portal</span>
-        </div>
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="text-white focus:outline-none"
@@ -125,7 +125,7 @@ export const Sidebar: React.FC = () => {
               DAR PH
             </h1>
             <p className="text-[10px] text-emerald-200 uppercase tracking-widest leading-3 m-0">
-              Negros Occidental
+              {profile?.province || "Negros Occidental"}
             </p>
           </div>
         </div>

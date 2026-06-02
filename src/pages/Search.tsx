@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
   Search as SearchIcon,
@@ -11,6 +11,11 @@ import {
   User,
   ShieldAlert,
   Hash,
+  Eye,
+  X,
+  Calendar,
+  Globe,
+  FileText,
 } from "lucide-react";
 
 interface SearchResult {
@@ -19,6 +24,7 @@ interface SearchResult {
   lotNumber: string;
   areaHectares: number;
   municipality: string;
+  province: string;
   geoLat: string;
   geoLng: string;
   beneficiaryName: string;
@@ -34,29 +40,25 @@ export const Search: React.FC = () => {
   const [records, setRecords] = useState<SearchResult[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRecord, setSelectedRecord] = useState<SearchResult | null>(null);
 
-  // Load all titles from Firestore to do instant multi-field client-side query
+  // Load all titles from Firestore with real-time listener
   useEffect(() => {
-    const fetchAllTitles = async () => {
-      try {
-        setLoading(true);
-        const colRef = collection(db, "landTitles");
-        const snap = await getDocs(colRef);
+    setLoading(true);
+    const colRef = collection(db, "landTitles");
+    const unsub = onSnapshot(colRef, (snap) => {
+      const list: SearchResult[] = [];
+      snap.forEach((d) => {
+        list.push(d.data() as SearchResult);
+      });
+      setRecords(list);
+      setLoading(false);
+    }, (err) => {
+      console.error("Failed to load title search indices:", err);
+      setLoading(false);
+    });
 
-        const list: SearchResult[] = [];
-        snap.forEach((d) => {
-          list.push(d.data() as SearchResult);
-        });
-
-        setRecords(list);
-      } catch (err) {
-        console.error("Failed to load title search indices:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAllTitles();
+    return () => unsub();
   }, []);
 
   // Filter list when query or records change
@@ -110,7 +112,7 @@ export const Search: React.FC = () => {
             </h3>
             <p className="text-[10px] text-slate-400 mb-4">
               Query database instantly by OCT/TCT number, Lot number,
-              Beneficiary name, or Negros Occidental municipality.
+              Beneficiary name, or municipality.
             </p>
 
             <form
@@ -180,7 +182,8 @@ export const Search: React.FC = () => {
                     {filteredRecords.map((item, idx) => (
                       <tr
                         key={idx}
-                        className="hover:bg-slate-50/50 transition-colors"
+                        onClick={() => setSelectedRecord(item)}
+                        className="hover:bg-slate-50/50 transition-colors cursor-pointer"
                       >
                         {/* Title no */}
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -236,8 +239,19 @@ export const Search: React.FC = () => {
                         </td>
 
                         {/* Surveyor ID */}
-                        <td className="px-6 py-4 whitespace-nowrap text-slate-450 italic text-xs">
-                          {item.surveyorId}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center justify-end space-x-2">
+                            <span className="text-slate-450 italic text-xs">
+                              {item.surveyorId}
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSelectedRecord(item); }}
+                              className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+                              title="View Details"
+                            >
+                              <Eye size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -272,6 +286,120 @@ export const Search: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Title Detail Modal */}
+      {selectedRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden text-left border border-slate-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center space-x-3">
+                <Hash size={18} className="text-emerald-800" />
+                <div>
+                  <h3 className="font-bold text-slate-900">Title Record Details</h3>
+                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedRecord.titleId}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedRecord(null)}
+                className="text-slate-400 hover:bg-slate-200 hover:text-slate-700 px-3 py-1 rounded text-xs font-bold transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-2 gap-5">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Title Number</span>
+                  <span className="font-mono font-extrabold text-slate-900 text-lg">{selectedRecord.titleNumber}</span>
+                </div>
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Beneficiary</span>
+                  <span className="font-extrabold text-slate-900 flex items-center">
+                    <User size={16} className="mr-1.5 text-indigo-600" />
+                    {selectedRecord.beneficiaryName}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-5">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Lot Number</span>
+                  <span className="font-bold text-slate-900">{selectedRecord.lotNumber}</span>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Land Area</span>
+                  <span className="font-bold text-slate-900 flex items-center">
+                    <Layers size={16} className="mr-1.5 text-emerald-700" />
+                    {selectedRecord.areaHectares} Hectares
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-5">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Province</span>
+                  <span className="font-bold text-slate-900 flex items-center">
+                    <Globe size={16} className="mr-1.5 text-slate-500" />
+                    {selectedRecord.province || "Negros Occidental"}
+                  </span>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Municipality</span>
+                  <span className="font-bold text-slate-900 flex items-center">
+                    <MapPin size={16} className="mr-1.5 text-slate-500" />
+                    {selectedRecord.municipality}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">GPS Coordinates</span>
+                <div className="flex items-center space-x-4">
+                  <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
+                    <Compass size={14} className="inline mr-1 text-slate-400" />
+                    Lat: {selectedRecord.geoLat}
+                  </span>
+                  <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
+                    <Compass size={14} className="inline mr-1 text-slate-400" />
+                    Lng: {selectedRecord.geoLng}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-5">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Encoded By</span>
+                  <span className="font-bold text-slate-900 flex items-center">
+                    <FileText size={16} className="mr-1.5 text-slate-500" />
+                    {selectedRecord.surveyorId}
+                  </span>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Date Encoded</span>
+                  <span className="font-bold text-slate-900 flex items-center">
+                    <Calendar size={16} className="mr-1.5 text-slate-500" />
+                    {selectedRecord.encodedAt
+                      ? new Date(selectedRecord.encodedAt).toLocaleDateString("en-US", {
+                          day: "numeric", month: "short", year: "numeric",
+                        })
+                      : "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setSelectedRecord(null)}
+                className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg text-xs font-bold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
