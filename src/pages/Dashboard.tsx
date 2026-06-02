@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Sidebar } from "../components/Sidebar";
 import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
-import { collection, query, getDocs, where } from "firebase/firestore";
+import { collection, query, getDocs, where, onSnapshot, limit, orderBy } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
   Users,
@@ -14,6 +14,9 @@ import {
   ArrowUpDown,
   ChevronUp,
   ChevronDown,
+  Hash,
+  Map,
+  Calendar,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -31,6 +34,18 @@ interface AppRecord {
   submittedAt: string;
 }
 
+interface LandTitle {
+  titleId: string;
+  applicationId: string;
+  titleNumber: string;
+  lotNumber: string;
+  areaHectares: number;
+  municipality: string;
+  geoLat: string;
+  geoLng: string;
+  encodedAt: string;
+}
+
 type SortField = "userName" | "userBarangay" | "status" | "submittedAt";
 type SortDir = "asc" | "desc";
 
@@ -43,6 +58,8 @@ export const Dashboard: React.FC = () => {
     activeTitles: 0,
   });
   const [applications, setApplications] = useState<AppRecord[]>([]);
+  const [landTitles, setLandTitles] = useState<LandTitle[]>([]);
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [searchError, setSearchError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -51,59 +68,62 @@ export const Dashboard: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>("submittedAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  // Load live values from Firestore
+  // Modal State
+  const [selectedApp, setSelectedApp] = useState<AppRecord | null>(null);
+
+  // Load live values from Firestore using onSnapshot
   useEffect(() => {
-    const fetchLiveStats = async () => {
-      try {
-        setLoading(true);
+    setLoading(true);
 
-        // Load ARBs (Farmers)
-        const farmersQuery = query(
-          collection(db, "users"),
-          where("role", "==", "arb"),
-        );
-        const farmersSnap = await getDocs(farmersQuery);
-        const farmersCount = farmersSnap.size;
+    // 1. Listen to Farmers count
+    const qUsers = query(collection(db, "users"), where("role", "==", "arb"));
+    const unsubUsers = onSnapshot(qUsers, (snap) => {
+      setStats((prev) => ({ ...prev, totalFarmers: snap.size }));
+    });
 
-        // Load Land Titles
-        const titlesSnap = await getDocs(query(collection(db, "landTitles")));
-        const activeTitlesCount = titlesSnap.size;
+    // 2. Listen to Land Titles (for stats and modal lookups)
+    const unsubTitles = onSnapshot(collection(db, "landTitles"), (snap) => {
+      let sumHectares = 0;
+      const titles: LandTitle[] = [];
+      snap.forEach((doc) => {
+        const data = doc.data() as LandTitle;
+        sumHectares += Number(data.areaHectares || 0);
+        titles.push(data);
+      });
+      setStats((prev) => ({
+        ...prev,
+        activeTitles: snap.size,
+        totalLandsHectares: Number(sumHectares.toFixed(1)),
+      }));
+      setLandTitles(titles);
+    });
 
-        // Sum land hectares
-        let sumHectares = 0;
-        titlesSnap.forEach((doc) => {
-          const data = doc.data();
-          sumHectares += Number(data.areaHectares || 0);
+    // 3. Listen to Applications Registry (limited to 100 for scalability)
+    const qApps = query(collection(db, "applications"), orderBy("submittedAt", "desc"), limit(100));
+    const unsubApps = onSnapshot(qApps, (snap) => {
+      const appList: AppRecord[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        appList.push({
+          id: d.id,
+          userName: data.userName || "Unknown",
+          userBarangay: data.userBarangay || "—",
+          status: data.status as ApplicationStatus,
+          submittedAt: data.submittedAt || "",
         });
+      });
+      setApplications(appList);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching applications:", error);
+      setLoading(false);
+    });
 
-        setStats({
-          totalFarmers: farmersCount,
-          totalLandsHectares: Number(sumHectares.toFixed(1)),
-          activeTitles: activeTitlesCount,
-        });
-
-        // Load all applications for the registry table
-        const appsSnap = await getDocs(collection(db, "applications"));
-        const appList: AppRecord[] = [];
-        appsSnap.forEach((d) => {
-          const data = d.data();
-          appList.push({
-            id: d.id,
-            userName: data.userName || "Unknown",
-            userBarangay: data.userBarangay || "—",
-            status: data.status as ApplicationStatus,
-            submittedAt: data.submittedAt || "",
-          });
-        });
-        setApplications(appList);
-      } catch (err) {
-        console.error("Error loading dashboard data:", err);
-      } finally {
-        setLoading(false);
-      }
+    return () => {
+      unsubUsers();
+      unsubTitles();
+      unsubApps();
     };
-
-    fetchLiveStats();
   }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -115,7 +135,6 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    // Go to registry search results
     navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
   };
 
@@ -147,6 +166,8 @@ export const Dashboard: React.FC = () => {
       <ChevronDown size={12} className="text-emerald-700 ml-1" />
     );
   };
+
+  const selectedTitle = selectedApp ? landTitles.find((t) => t.applicationId === selectedApp.id) : null;
 
   // If role is raw ARB user, show their custom overview
   if (profile?.role === "arb") {
@@ -213,7 +234,7 @@ export const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden relative">
       <Sidebar />
 
       <div className="flex-1 flex flex-col overflow-y-auto">
@@ -292,7 +313,7 @@ export const Dashboard: React.FC = () => {
                   {stats.totalFarmers}
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Negros Occidental Municipalities
+                  Total Municipalities
                 </p>
               </div>
               <div className="h-12 w-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
@@ -333,7 +354,7 @@ export const Dashboard: React.FC = () => {
               <form onSubmit={handleSearchSubmit} className="space-y-4 my-auto">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                    Enter OCT/TCT Number
+                     OCT/TCT Number
                   </label>
                   <div className="relative">
                     <input
@@ -369,7 +390,7 @@ export const Dashboard: React.FC = () => {
                 Application Status Distribution
               </h3>
               <p className="text-[10px] text-slate-400 mb-6">
-                Current breakdown of all ARB applications by stage
+                Current breakdown of recent ARB applications by stage
               </p>
 
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -412,11 +433,11 @@ export const Dashboard: React.FC = () => {
                   Applications Registry
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  All ARB applications — click column headers to sort
+                  Latest 100 applications — click row to view details
                 </p>
               </div>
               <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                {applications.length} Total
+                {applications.length} Limit
               </span>
             </div>
 
@@ -497,7 +518,8 @@ export const Dashboard: React.FC = () => {
                     sortedApplications.map((item) => (
                       <tr
                         key={item.id}
-                        className="hover:bg-slate-50/50 transition-colors"
+                        onClick={() => setSelectedApp(item)}
+                        className="hover:bg-slate-50 cursor-pointer transition-colors"
                       >
                         <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">
                           {item.userName}
@@ -535,6 +557,94 @@ export const Dashboard: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Registry Title Details Modal */}
+      {selectedApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden text-left border border-slate-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="font-bold text-slate-900">Registry Profile</h3>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedApp.id}</p>
+              </div>
+              <button 
+                onClick={() => setSelectedApp(null)}
+                className="text-slate-400 hover:bg-slate-200 hover:text-slate-700 px-3 py-1 rounded text-xs font-bold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-900">{selectedApp.userName}</h2>
+                  <p className="text-sm text-slate-500 flex items-center mt-1">
+                    <MapPin size={14} className="mr-1"/> {selectedApp.userBarangay}
+                  </p>
+                </div>
+                <StatusBadge status={selectedApp.status} />
+              </div>
+
+              {selectedTitle ? (
+                <div className="space-y-4">
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-3">CLOA Title Details</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Title Number</span>
+                        <span className="font-mono font-bold text-slate-900">{selectedTitle.titleNumber}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Lot Number</span>
+                        <span className="font-bold text-slate-900">{selectedTitle.lotNumber}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Land Area</span>
+                        <span className="font-bold text-slate-900 flex items-center">
+                          <Layers size={14} className="text-emerald-700 mr-1"/>
+                          {selectedTitle.areaHectares} Hectares
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Encoded Location</span>
+                        <span className="font-bold text-slate-900 flex items-center">
+                          <MapPin size={14} className="text-emerald-700 mr-1"/>
+                          {selectedTitle.municipality}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs">
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400">GPS Coordinates</span>
+                      <span className="font-mono bg-white border border-slate-200 px-2 py-1 rounded shadow-sm">
+                        {selectedTitle.geoLat}, {selectedTitle.geoLng}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-6 text-center text-sm">
+                  <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
+                  <p className="font-semibold">No Land Title Encoded Yet</p>
+                  <p className="text-xs mt-1 opacity-80">This application is currently in the {selectedApp.status.replace("_", " ")} stage. A surveyor must verify and encode the title boundaries to generate a CLOA record.</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-end">
+              <button 
+                onClick={() => setSelectedApp(null)}
+                className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg text-xs font-bold transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
