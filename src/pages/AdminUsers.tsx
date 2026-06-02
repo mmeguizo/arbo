@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
-import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, updateDoc } from "firebase/firestore";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { db, firebaseConfig } from "../firebase/config";
 import {
   UserPlus,
@@ -14,6 +14,9 @@ import {
   Hash,
   Eye,
   EyeOff,
+  PowerOff,
+  Power,
+  KeyRound,
 } from "lucide-react";
 
 interface UserProfile {
@@ -23,6 +26,7 @@ interface UserProfile {
   role: "arb" | "staff" | "surveyor" | "admin";
   barangay: string;
   createdAt: string;
+  isActive?: boolean;
 }
 
 export const AdminUsers: React.FC = () => {
@@ -58,6 +62,7 @@ export const AdminUsers: React.FC = () => {
             role: u.role as "staff" | "surveyor" | "admin",
             barangay: u.barangay || "",
             createdAt: u.createdAt || "",
+            isActive: u.isActive !== false, // default true
           });
         }
       });
@@ -164,6 +169,37 @@ export const AdminUsers: React.FC = () => {
         }
       }
       setSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async (userProfile: UserProfile) => {
+    try {
+      const newStatus = !userProfile.isActive;
+      await updateDoc(doc(db, "users", userProfile.uid), {
+        isActive: newStatus,
+      });
+      setFeedback({
+        type: "success",
+        msg: `User ${userProfile.name} is now ${newStatus ? "Active" : "Disabled"}.`,
+      });
+      await fetchUsers();
+    } catch (err) {
+      console.error("Failed to toggle status", err);
+      setFeedback({ type: "error", msg: "Failed to update user status." });
+    }
+  };
+
+  const handleResetPassword = async (emailToReset: string) => {
+    try {
+      const auth = getAuth();
+      await sendPasswordResetEmail(auth, emailToReset);
+      setFeedback({
+        type: "success",
+        msg: `Password reset email sent to ${emailToReset}`,
+      });
+    } catch (err) {
+      console.error("Failed to send reset email", err);
+      setFeedback({ type: "error", msg: "Failed to send password reset email." });
     }
   };
 
@@ -364,6 +400,9 @@ export const AdminUsers: React.FC = () => {
                         <th scope="col" className="px-5 py-3">
                           Created
                         </th>
+                        <th scope="col" className="px-5 py-3 text-right">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -407,6 +446,26 @@ export const AdminUsers: React.FC = () => {
                             {u.createdAt
                               ? new Date(u.createdAt).toLocaleDateString()
                               : "--"}
+                          </td>
+                          <td className="px-5 py-3 whitespace-nowrap text-right space-x-2">
+                            <button
+                              onClick={() => handleResetPassword(u.email)}
+                              title="Send Password Reset Email"
+                              className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+                            >
+                              <KeyRound size={12} />
+                            </button>
+                            <button
+                              onClick={() => handleToggleStatus(u)}
+                              title={u.isActive ? "Disable User" : "Enable User"}
+                              className={`inline-flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
+                                u.isActive
+                                  ? "bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-700"
+                                  : "bg-emerald-50 text-emerald-500 hover:bg-emerald-100 hover:text-emerald-700"
+                              }`}
+                            >
+                              {u.isActive ? <PowerOff size={12} /> : <Power size={12} />}
+                            </button>
                           </td>
                         </tr>
                       ))}

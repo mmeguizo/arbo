@@ -92,7 +92,7 @@ One application per ARB farmer. Linked by their Auth UID.
   "userName": "string",
   "userEmail": "string",
   "userBarangay": "string",
-  "status": "under_review | pending | verified | disputed",
+  "status": "under_review | pending | verified | awarded | disputed",
   "submittedAt": "ISO string",
   "notes": "string",
   "reviewedBy": "string",
@@ -101,7 +101,10 @@ One application per ARB farmer. Linked by their Auth UID.
     "birthCert": "base64 string or null",
     "brgyCert": "base64 string or null",
     "picture": "base64 string or null"
-  }
+  },
+  "surveyorEncodedAt": "ISO string (optional)",
+  "surveyorName": "string (optional)",
+  "titleNumber": "string (optional)"
 }
 ```
 
@@ -184,8 +187,14 @@ The "Profitability Tracking" dashboard was removed from active scope. It appears
 ### C. Base64 Document Storage
 ARB farmers upload 4 documents (Cedula, Birth Cert, Barangay Cert, Photo). These are converted to Base64 strings and stored directly inside the Firestore application document. This avoids needing Firebase Storage rules and simplifies setup.
 
-### D. Mock + Live Data Blending
-Dashboard stats blend live Firestore counts with mock "base" values (e.g., `farmersCount + 12000`). This makes the demo look populated from Day 1 even with a fresh empty database.
+### D. Real-time Live Stats
+Dashboard stats now reflect live Firestore counts for total farmers, land titles, and total hectarage. No dummy or mock data is injected. The registry table supports column sorting out of the box.
+
+### E. CLOA Approval Pipeline (4-Stage)
+1. **Under Review** (Staff Stage): ARB registers and uploads documents.
+2. **Pending** (Admin Stage): Staff verifies documents and forwards to Admin.
+3. **Verified**: Admin approves the application.
+4. **Awarded**: Surveyor encodes the land title coordinates, generating the final CLOA.
 
 ---
 

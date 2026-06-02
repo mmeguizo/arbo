@@ -35,7 +35,7 @@ export const Search: React.FC = () => {
   const [filteredRecords, setFilteredRecords] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load all titles from Firestore to do instant multi-field client-side query (super robust and safe from Firestore search limitation index errors!)
+  // Load all titles from Firestore to do instant multi-field client-side query
   useEffect(() => {
     const fetchAllTitles = async () => {
       try {
@@ -48,36 +48,7 @@ export const Search: React.FC = () => {
           list.push(d.data() as SearchResult);
         });
 
-        // Add mock visual fallbacks matching mockup items just to guarantee beautiful search displays for demoing!
-        const fallbacks: SearchResult[] = [
-          {
-            titleId: "TTL-00102",
-            titleNumber: "TCT-456789",
-            lotNumber: "Lot A-1",
-            areaHectares: 1.0,
-            municipality: "Isabela",
-            geoLat: "10.2014",
-            geoLng: "123.0041",
-            beneficiaryName: "Malaya Farmers Assoc.",
-            surveyorId: "Maria Surveyor",
-            encodedAt: new Date().toISOString(),
-          },
-          {
-            titleId: "TTL-00223",
-            titleNumber: "TCT-123456",
-            lotNumber: "Lot 52-B",
-            areaHectares: 2.4,
-            municipality: "San Jose",
-            geoLat: "10.2831",
-            geoLng: "122.9912",
-            beneficiaryName: "San Jose Agrarian Union",
-            surveyorId: "John Surveyor",
-            encodedAt: new Date().toISOString(),
-          },
-        ];
-
-        // Merge lists
-        setRecords([...list, ...fallbacks]);
+        setRecords(list);
       } catch (err) {
         console.error("Failed to load title search indices:", err);
       } finally {

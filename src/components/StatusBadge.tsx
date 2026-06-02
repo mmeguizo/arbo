@@ -4,6 +4,7 @@ export type ApplicationStatus =
   | "under_review"
   | "pending"
   | "verified"
+  | "awarded"
   | "disputed";
 
 interface StatusBadgeProps {
@@ -19,7 +20,15 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
           text: "text-emerald-700",
           border: "border-emerald-200",
           dot: "bg-emerald-500",
-          label: "Verified",
+          label: "Verified (Admin Approved)",
+        };
+      case "awarded":
+        return {
+          bg: "bg-blue-50",
+          text: "text-blue-700",
+          border: "border-blue-200",
+          dot: "bg-blue-500",
+          label: "Awarded (Title Encoded)",
         };
       case "pending":
         return {

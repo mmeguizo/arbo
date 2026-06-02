@@ -38,8 +38,6 @@ interface PsgcListResponse<T> {
   data: T[];
 }
 
-const NEGROS_OCCIDENTAL_PROVINCE_CODE = "0604500000";
-
 const getPsgcItems = (
   payload: PsgcLocationItem[] | PsgcListResponse<PsgcLocationItem>,
 ) => {

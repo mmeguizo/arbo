@@ -69,7 +69,7 @@ export const MyApplication: React.FC = () => {
   const [docError, setDocError] = useState<string | null>(null);
 
   // Only allow edits before final approval
-  const canModify = app && app.status !== "verified";
+  const canModify = app && app.status !== "verified" && app.status !== "awarded";
 
   // After modifying a doc, push back to under_review so staff re-evaluates
   const revertedStatus = (): ApplicationStatus => "under_review";
@@ -300,7 +300,9 @@ export const MyApplication: React.FC = () => {
                         {app.status === "pending" &&
                           "Municipal staff has verified your files! Waiting on Admin/Regional Director final confirmation."}
                         {app.status === "verified" &&
-                          "Congratulations! Your application is fully approved. The municipal surveyor team is allocating title boundaries."}
+                          "Your application has been fully approved by the Admin/Regional Director. The surveyor team will now encode your land title boundaries."}
+                        {app.status === "awarded" &&
+                          "Congratulations! Your CLOA title has been officially awarded. The surveyor has encoded your land parcel details — check below for your title card."}
                         {app.status === "disputed" &&
                           "There is an issue with your credentials/residency. Please reach out to your municipal officer immediately."}
                       </p>
@@ -409,7 +411,7 @@ export const MyApplication: React.FC = () => {
                   </span>
                 </div>
               </div>
-            ) : app?.status === "verified" ? (
+            ) : (app?.status === "verified" || app?.status === "awarded") ? (
               <div className="bg-amber-50 rounded-2xl border border-amber-250 p-6 text-left flex items-start space-x-3.5">
                 <AlertCircle
                   size={22}

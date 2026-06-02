@@ -16,6 +16,7 @@ export interface UserProfile {
   barangay: string;
   role: UserRole;
   createdAt: string;
+  isActive?: boolean;
 }
 
 interface AuthContextType {

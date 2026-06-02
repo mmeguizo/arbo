@@ -186,6 +186,17 @@ export const LandTitles: React.FC = () => {
         encodedAt: new Date().toISOString(),
       });
 
+      // Update the application status from 'verified' → 'awarded' so the ARB user
+      // sees their title has been officially encoded by the surveyor
+      const { updateDoc: updateDocFn } = await import("firebase/firestore");
+      const appDocRef = doc(db, "applications", selectedAppRecord.id);
+      await updateDocFn(appDocRef, {
+        status: "awarded",
+        surveyorEncodedAt: new Date().toISOString(),
+        surveyorName: profile?.name || "Surveyor Officer",
+        titleNumber: cleanTitle,
+      });
+
       // Clear Form and mark success
       setSubmitted(true);
       setTitleNumber("");

@@ -9,6 +9,7 @@ import {
   doc,
   query,
   orderBy,
+  onSnapshot,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
@@ -43,9 +44,11 @@ export const ReviewApps: React.FC = () => {
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
   const [notesInput, setNotesInput] = useState("");
+
+  // Admin defaults to "pending" (Admin Stage) so they see apps awaiting their approval
   const [activeTab, setActiveTab] = useState<
     "under_review" | "pending" | "resolved"
-  >("under_review");
+  >(profile?.role === "admin" ? "pending" : "under_review");
 
   // Modal for previewing documents
   const [activePreviewDoc, setActivePreviewDoc] = useState<{
@@ -53,67 +56,59 @@ export const ReviewApps: React.FC = () => {
     src: string;
   } | null>(null);
 
-  const fetchApplications = async () => {
-    try {
-      setLoading(true);
-      const q = query(
-        collection(db, "applications"),
-        orderBy("submittedAt", "desc"),
-      );
-      const snap = await getDocs(q);
-      const list: Application[] = [];
-      snap.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as Application);
-      });
-      setApps(list);
-
-      // Keep selected app updated if it's currently selected
-      if (selectedApp) {
-        const updated = list.find((a) => a.id === selectedApp.id);
-        if (updated) {
-          setSelectedApp(updated);
-          setNotesInput(updated.notes || "");
-        }
-      } else if (list.length > 0) {
-        // Find first item matching active tab
-        const defaultSelect = list.find((a) => {
-          if (activeTab === "under_review") return a.status === "under_review";
-          if (activeTab === "pending") return a.status === "pending";
-          return a.status === "verified" || a.status === "disputed";
-        });
-        if (defaultSelect) {
-          setSelectedApp(defaultSelect);
-          setNotesInput(defaultSelect.notes || "");
-        } else {
-          setSelectedApp(list[0]);
-          setNotesInput(list[0].notes || "");
-        }
-      }
-    } catch (err) {
-      console.error("Error loading application items:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchApplications();
+    setLoading(true);
+    const q = query(
+      collection(db, "applications"),
+      orderBy("submittedAt", "desc"),
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const list: Application[] = [];
+        snap.forEach((d) => {
+          list.push({ id: d.id, ...d.data() } as Application);
+        });
+        setApps(list);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error with snapshot listener:", error);
+        setLoading(false);
+      },
+    );
+
+    return () => unsubscribe();
   }, []);
 
-  // Update selection if active tab changes
+  // Update selection if active tab changes or if apps change via snapshot
   useEffect(() => {
+    if (selectedApp) {
+      // Keep current selection updated with live changes
+      const updated = apps.find((a) => a.id === selectedApp.id);
+      if (updated) {
+        // Only update if status changed or notes changed to avoid re-renders
+        if (updated.status !== selectedApp.status) {
+          setSelectedApp(updated);
+        }
+      }
+      return;
+    }
+
     const defaultSelect = apps.find((a) => {
       if (activeTab === "under_review") return a.status === "under_review";
       if (activeTab === "pending") return a.status === "pending";
-      return a.status === "verified" || a.status === "disputed";
+      return a.status === "verified" || a.status === "awarded" || a.status === "disputed";
     });
+    
     if (defaultSelect) {
       setSelectedApp(defaultSelect);
       setNotesInput(defaultSelect.notes || "");
     } else {
       setSelectedApp(null);
     }
-  }, [activeTab, apps]);
+  }, [activeTab, apps, selectedApp]);
 
   const handleSelectApp = (appItem: Application) => {
     setSelectedApp(appItem);
@@ -143,8 +138,7 @@ export const ReviewApps: React.FC = () => {
 
       await updateDoc(docRef, payload);
 
-      // Refresh local copy
-      await fetchApplications();
+      // Snapshot will automatically update the UI list
     } catch (err) {
       console.error("Failed to commit status change:", err);
     } finally {
@@ -157,7 +151,7 @@ export const ReviewApps: React.FC = () => {
     return apps.filter((a) => {
       if (activeTab === "under_review") return a.status === "under_review";
       if (activeTab === "pending") return a.status === "pending";
-      return a.status === "verified" || a.status === "disputed";
+      return a.status === "verified" || a.status === "awarded" || a.status === "disputed";
     });
   };
 
@@ -466,7 +460,7 @@ export const ReviewApps: React.FC = () => {
                       {selectedApp.status === "pending" && (
                         <button
                           onClick={() => updateStatus("verified")}
-                          className="flex items-center space-x-2 rounded-xl bg-emerald-850 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-lg cursor-pointer"
+                          className="flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-lg cursor-pointer"
                         >
                           <CheckCircle2 size={16} className="text-amber-400" />
                           <span>Verify and Finalize Title Eligibility</span>
