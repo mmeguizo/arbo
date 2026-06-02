@@ -1,0 +1,46 @@
+arbo mobile support, web app
+agrarian reform beneficiares organization
+arb  = receive cloa
+give land from the govt and need to utilize
+cultivate it by, cant sell it outside the kinship
+1 hectare will be given by the govt
+govt will give seeds or fertilizer
+before they will be given they should be qualified beneficiaries
+first is 10 year residency on that land
+so if the regional director decided to give land
+for a certain city, so the requirements is personal documents
+brgy certs, proof and application processs and registration process
+so they need online process to do that online 
+after they register they can upload certificate, cedula, birth certificate
+and DAR employee/ staff will evaulatue the documents and status is pending if qualified 
+and will also have survey to verify if everything is correct and check the land if 
+correct, coordinates of the land etc for the title and encode on the system and add lot number 
+and title number for the land but CLOA title only after title will be pending to the accounts of the 
+users ARB beneficiaries, after some time the data will go to the MARO municipal agrarian reform 
+if approve and ok all applications during interviews then it will be awarded to you the title
+and it is yours it will show in your account that is your title, that is the one stage
+if there is title, there will be search options for the title, land title, names of people
+there is like a multiple title which is should not be to know who is the professional squatter that 
+keeps applying for land title, the verifications if search if the pending, etc
+and if there is data there is like analaytics or dashboard, how many users
+how many average land area, how many title, locations how many in certain areas how many land in the other areas
+next feature will be profitability tracking but this will be on the future
+location per municipality of negros occidental we need to get the lists
+status verified, when it is verified, 
+the important is there is land title with benefecierirs with details 
+after register submit document 
+another account will verify to check the document lets call him staff to verify the documents 
+the status are verified, pending, under review, disputed
+after they upload default is under review, the staff will review
+if all are ok then she will click proceed then the status is pending
+the regional director will approved or verified status
+check the layout sample liek total lands cultivated that is based on the title 
+the next account is surveyor account, he will put the title number and add land area and geo location of the area 
+because in the future we can put map on it if awarded or check the land where is it on the map we can see it
+there will be 4 accounts , staff, surveyor, admin, users
+remove the microfinance dashboard, profitable tracking will be future 
+this will profitable tracking will be the capital provided to them 
+or given 100k sample after one year what happen, like also they given fertilizer this will determine
+if they money is utilize, loan disbursed repayment status and member growth like if the child have finished all studies
+or anything gain from the govertment it will show on the dashboard active ARBO's supported
+like be given fertilizer and funding 1million check if what happen to the money if the lifestyle improve added capital gain or another business etc
