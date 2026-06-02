@@ -434,7 +434,7 @@ export const ReviewApps: React.FC = () => {
                       <>
                         <button
                           onClick={() => updateStatus("pending")}
-                          className="flex items-center space-x-2 rounded-xl bg-themeGreen hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer"
+                          className="flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer"
                         >
                           <Check size={16} className="stroke-3" />
                           <span>Confirm and Proceed to Admin</span>
@@ -456,7 +456,7 @@ export const ReviewApps: React.FC = () => {
                       {selectedApp.status === "under_review" && (
                         <button
                           onClick={() => updateStatus("pending")}
-                          className="flex items-center space-x-2 rounded-xl bg-themeGreen hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer"
+                          className="flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer"
                         >
                           <Check size={16} className="stroke-3" />
                           <span>Forward to Admin Hold</span>

@@ -29,6 +29,28 @@ interface UploadedDocumentUrls {
   picture: string | null;
 }
 
+interface PsgcLocationItem {
+  code: string;
+  name: string;
+}
+
+interface PsgcListResponse<T> {
+  data: T[];
+}
+
+const NEGROS_OCCIDENTAL_PROVINCE_CODE = "0604500000";
+
+const getPsgcItems = (
+  payload: PsgcLocationItem[] | PsgcListResponse<PsgcLocationItem>,
+) => {
+  const items = Array.isArray(payload) ? payload : payload.data;
+
+  return items.map((item) => ({
+    code: item.code,
+    name: item.name.trim(),
+  }));
+};
+
 export const Register: React.FC = () => {
   const navigate = useNavigate();
   const { refreshProfile } = useAuth();
@@ -49,12 +71,8 @@ export const Register: React.FC = () => {
   const [municipality, setMunicipality] = useState("");
   const [municipalityCode, setMunicipalityCode] = useState("");
   const [barangay, setBarangay] = useState("");
-  const [municipalities, setMunicipalities] = useState<
-    { code: string; name: string }[]
-  >([]);
-  const [barangays, setBarangays] = useState<{ code: string; name: string }[]>(
-    [],
-  );
+  const [municipalities, setMunicipalities] = useState<PsgcLocationItem[]>([]);
+  const [barangays, setBarangays] = useState<PsgcLocationItem[]>([]);
   const [locationLoading, setLocationLoading] = useState(false);
 
   // Document Uploads (Simulated / Stored as Base64/urls for sandbox robustness)
@@ -87,19 +105,48 @@ export const Register: React.FC = () => {
     const loadMunicipalities = async () => {
       setLocationLoading(true);
       try {
-        const res = await fetch("https://psgc.cloud/api/v2/provinces");
-        const provinces: { code: string; name: string }[] = await res.json();
-        const negOcc = provinces.find((p) => p.name === "Negros Occidental");
-        if (negOcc) {
-          const res2 = await fetch(
-            `https://psgc.cloud/api/v2/provinces/${negOcc.code}/cities-municipalities`,
-          );
-          const items: { code: string; name: string }[] = await res2.json();
-          setMunicipalities(
-            [...items].sort((a, b) => a.name.localeCompare(b.name)),
-          );
-        }
+        const sampleData = {
+          data: [
+            {"code":"0630200000","name":"City of Bacolod "},
+            {"code":"0604502000","name":"City of Bago"},
+            {"code":"0604503000","name":"Binalbagan"},
+            {"code":"0604504000","name":"City of Cadiz"},
+            {"code":"0604505000","name":"Calatrava"},
+            {"code":"0604506000","name":"Candoni"},
+            {"code":"0604507000","name":"Cauayan"},
+            {"code":"0604508000","name":"Enrique B. Magalona"},
+            {"code":"0604509000","name":"City of Escalante"},
+            {"code":"0604510000","name":"City of Himamaylan"},
+            {"code":"0604511000","name":"Hinigaran"},
+            {"code":"0604512000","name":"Hinoba-an"},
+            {"code":"0604513000","name":"Ilog"},
+            {"code":"0604514000","name":"Isabela"},
+            {"code":"0604515000","name":"City of Kabankalan"},
+            {"code":"0604516000","name":"City of La Carlota"},
+            {"code":"0604517000","name":"La Castellana"},
+            {"code":"0604518000","name":"Manapla"},
+            {"code":"0604519000","name":"Moises Padilla"},
+            {"code":"0604520000","name":"Murcia"},
+            {"code":"0604521000","name":"Pontevedra"},
+            {"code":"0604522000","name":"Pulupandan"},
+            {"code":"0604523000","name":"City of Sagay"},
+            {"code":"0604524000","name":"City of San Carlos"},
+            {"code":"0604525000","name":"San Enrique"},
+            {"code":"0604526000","name":"City of Silay"},
+            {"code":"0604527000","name":"City of Sipalay"},
+            {"code":"0604528000","name":"City of Talisay"},
+            {"code":"0604529000","name":"Toboso"},
+            {"code":"0604530000","name":"Valladolid"},
+            {"code":"0604531000","name":"City of Victorias"},
+            {"code":"0604532000","name":"Salvador Benedicto"}
+          ]
+        };
+        const items = getPsgcItems(sampleData as unknown as PsgcListResponse<PsgcLocationItem>);
+        setMunicipalities(
+          [...items].sort((a, b) => a.name.localeCompare(b.name)),
+        );
       } catch (e) {
+        setMunicipalities([]);
         console.error("Failed to load municipalities:", e);
       } finally {
         setLocationLoading(false);
@@ -119,12 +166,18 @@ export const Register: React.FC = () => {
       setLocationLoading(true);
       try {
         const res = await fetch(
-          `https://psgc.cloud/api/v2/cities-municipalities/${municipalityCode}/barangays`,
+          `https://psgc.cloud/api/v2/cities-municipalities/${encodeURIComponent(municipalityCode)}/barangays`,
         );
-        const items: { code: string; name: string }[] = await res.json();
+        if (!res.ok) {
+          throw new Error(`Barangays request failed: ${res.status}`);
+        }
+        const payload: PsgcLocationItem[] | PsgcListResponse<PsgcLocationItem> =
+          await res.json();
+        const items = getPsgcItems(payload);
         setBarangays([...items].sort((a, b) => a.name.localeCompare(b.name)));
         setBarangay("");
       } catch (e) {
+        setBarangays([]);
         console.error("Failed to load barangays:", e);
       } finally {
         setLocationLoading(false);
@@ -133,7 +186,7 @@ export const Register: React.FC = () => {
     loadBarangays();
   }, [municipalityCode]);
 
-  // Handle local file select and convert to base64 for fallback storage or mock link
+  // Handle local file select and resize to tiny base64 via Canvas so it fits inside Firestore limit safely
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     type: DocumentField,
@@ -141,19 +194,44 @@ export const Register: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        setError(
-          `${file.name} is larger than 5MB. Please choose a smaller file.`,
-        );
+        setError(`${file.name} is larger than 5MB. Please choose a smaller file.`);
         e.target.value = "";
         return;
       }
-
       setError(null);
       setDocNames((prev) => ({ ...prev, [type]: file.name }));
 
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setDocs((prev) => ({ ...prev, [type]: reader.result as string }));
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 600; // Resize to ensure it fits comfortably in Firestore
+          const MAX_HEIGHT = 600;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Compress heavily (0.6 quality) to guarantee we stay far below the 1MB Firestore limit
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+          setDocs((prev) => ({ ...prev, [type]: dataUrl }));
+        };
+        img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     }
