@@ -2,7 +2,15 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Sidebar } from "../components/Sidebar";
 import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
-import { collection, query, getDocs, where, limit } from "firebase/firestore";
+import {
+  collection,
+  query,
+  getDocs,
+  where,
+  limit,
+  doc,
+  updateDoc,
+} from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
   FileText,
@@ -13,7 +21,14 @@ import {
   Calendar,
   AlertCircle,
   Hash,
+  Upload,
+  Trash2,
+  Eye,
+  X,
+  RotateCcw,
 } from "lucide-react";
+
+type DocField = "cedula" | "birthCert" | "brgyCert";
 
 interface LandTitle {
   titleNumber: string;
@@ -43,6 +58,92 @@ export const MyApplication: React.FC = () => {
   const [app, setApp] = useState<ApplicationData | null>(null);
   const [title, setTitle] = useState<LandTitle | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Document management state
+  const [previewDoc, setPreviewDoc] = useState<{
+    title: string;
+    src: string;
+  } | null>(null);
+  const [updatingDoc, setUpdatingDoc] = useState<DocField | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DocField | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+
+  // Only allow edits before final approval
+  const canModify = app && app.status !== "verified";
+
+  // After modifying a doc, push back to under_review so staff re-evaluates
+  const revertedStatus = (): ApplicationStatus => "under_review";
+
+  const handleReplaceDocument = (
+    type: DocField,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || !app) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setDocError(`File is too large (max 5MB). Please choose a smaller file.`);
+      e.target.value = "";
+      return;
+    }
+    setDocError(null);
+    setUpdatingDoc(type);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const base64 = reader.result as string;
+        const newStatus = revertedStatus();
+        const appRef = doc(db, "applications", app.applicationId);
+        await updateDoc(appRef, {
+          [`documents.${type}`]: base64,
+          status: newStatus,
+        });
+        setApp((prev) =>
+          prev
+            ? {
+                ...prev,
+                documents: { ...prev.documents, [type]: base64 },
+                status: newStatus,
+              }
+            : prev,
+        );
+      } catch (err) {
+        console.error("Failed to replace document:", err);
+        setDocError("Failed to update document. Please try again.");
+      } finally {
+        setUpdatingDoc(null);
+        e.target.value = "";
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDeleteDocument = async (type: DocField) => {
+    if (!app) return;
+    setConfirmDelete(null);
+    setUpdatingDoc(type);
+    try {
+      const newStatus = revertedStatus();
+      const appRef = doc(db, "applications", app.applicationId);
+      await updateDoc(appRef, {
+        [`documents.${type}`]: null,
+        status: newStatus,
+      });
+      setApp((prev) =>
+        prev
+          ? {
+              ...prev,
+              documents: { ...prev.documents, [type]: null },
+              status: newStatus,
+            }
+          : prev,
+      );
+    } catch (err) {
+      console.error("Failed to delete document:", err);
+      setDocError("Failed to remove document. Please try again.");
+    } finally {
+      setUpdatingDoc(null);
+    }
+  };
 
   useEffect(() => {
     const fetchApplicationInfo = async () => {
@@ -328,101 +429,263 @@ export const MyApplication: React.FC = () => {
               </div>
             ) : null}
 
-            {/* Document checklist summary */}
+            {/* Document management section */}
             {app && (
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-left">
-                <h3 className="text-sm font-bold text-slate-900 mb-1">
-                  Uploaded Application Documentation
-                </h3>
-                <p className="text-[10px] text-slate-400 mb-6">
-                  These reference files were encoded during registration for
-                  residency verification.
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  {/* Cedula block */}
-                  <div className="border border-slate-150 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-3 bg-slate-50 hover:bg-slate-100/50 transition-colors">
-                    <CreditCard size={20} className="text-slate-500" />
-                    <div>
-                      <span className="text-xs font-bold text-slate-800 block">
-                        CTC (Cedula)
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        Identity / Tax reference
-                      </span>
-                    </div>
-                    {app.documents.cedula ? (
-                      <div className="h-20 w-32 bg-white rounded border border-slate-200 overflow-hidden flex items-center justify-center shadow-inner">
-                        <img
-                          src={app.documents.cedula}
-                          alt="Cedula preview"
-                          className="h-full w-full object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">
-                        Unattached
-                      </span>
-                    )}
+                <div className="flex items-start justify-between mb-1">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Application Documents
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Documents submitted during registration. You may replace
+                      or remove a file — doing so will reset your status back to{" "}
+                      <span className="font-bold text-emerald-700">
+                        Under Review
+                      </span>{" "}
+                      for staff to re-evaluate.
+                    </p>
                   </div>
-
-                  {/* Birth cert block */}
-                  <div className="border border-slate-150 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-3 bg-slate-50 hover:bg-slate-100/50 transition-colors">
-                    <FileText size={20} className="text-slate-500" />
-                    <div>
-                      <span className="text-xs font-bold text-slate-800 block">
-                        Birth Certificate
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        Verified Kinship limits
-                      </span>
-                    </div>
-                    {app.documents.birthCert ? (
-                      <div className="h-20 w-32 bg-white rounded border border-slate-200 overflow-hidden flex items-center justify-center shadow-inner">
-                        <img
-                          src={app.documents.birthCert}
-                          alt="Birth cert preview"
-                          className="h-full w-full object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">
-                        Unattached
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Barangay certificate */}
-                  <div className="border border-slate-150 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-3 bg-slate-50 hover:bg-slate-100/50 transition-colors">
-                    <MapPin size={20} className="text-slate-500" />
-                    <div>
-                      <span className="text-xs font-bold text-slate-800 block">
-                        Barangay Residency Cert
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        10-Year municipal checks
-                      </span>
-                    </div>
-                    {app.documents.brgyCert ? (
-                      <div className="h-20 w-32 bg-white rounded border border-slate-200 overflow-hidden flex items-center justify-center shadow-inner">
-                        <img
-                          src={app.documents.brgyCert}
-                          alt="Brgy cert preview"
-                          className="h-full w-full object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">
-                        Unattached
-                      </span>
-                    )}
-                  </div>
+                  {app.status === "verified" && (
+                    <span className="shrink-0 text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-lg font-bold ml-4">
+                      Approved — read-only
+                    </span>
+                  )}
                 </div>
+
+                {docError && (
+                  <div className="mt-3 flex items-center space-x-2 text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-2.5">
+                    <AlertCircle size={14} className="shrink-0" />
+                    <span>{docError}</span>
+                  </div>
+                )}
+
+                {/* Document cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-5">
+                  {(
+                    [
+                      {
+                        type: "cedula" as DocField,
+                        label: "CTC (Cedula)",
+                        sub: "Identity / Tax reference",
+                        icon: (
+                          <CreditCard size={18} className="text-slate-500" />
+                        ),
+                        src: app.documents.cedula,
+                      },
+                      {
+                        type: "birthCert" as DocField,
+                        label: "Birth Certificate",
+                        sub: "Kinship & residency proof",
+                        icon: <FileText size={18} className="text-slate-500" />,
+                        src: app.documents.birthCert,
+                      },
+                      {
+                        type: "brgyCert" as DocField,
+                        label: "Barangay Residency Cert",
+                        sub: "10-year municipal proof",
+                        icon: <MapPin size={18} className="text-slate-500" />,
+                        src: app.documents.brgyCert,
+                      },
+                    ] as {
+                      type: DocField;
+                      label: string;
+                      sub: string;
+                      icon: React.ReactNode;
+                      src: string | null;
+                    }[]
+                  ).map(({ type, label, sub, icon, src }) => {
+                    const isUpdating = updatingDoc === type;
+                    return (
+                      <div
+                        key={type}
+                        className="border border-slate-200 rounded-2xl p-4 bg-slate-50 flex flex-col items-center text-center space-y-3"
+                      >
+                        {icon}
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">
+                            {label}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {sub}
+                          </span>
+                        </div>
+
+                        {/* Thumbnail or missing badge */}
+                        {src ? (
+                          <button
+                            onClick={() => setPreviewDoc({ title: label, src })}
+                            className="relative group h-24 w-full bg-white rounded-xl border border-slate-200 overflow-hidden flex items-center justify-center shadow-inner cursor-pointer"
+                          >
+                            {src.startsWith("data:application/pdf") ? (
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">
+                                PDF Document
+                              </span>
+                            ) : (
+                              <img
+                                src={src}
+                                alt={`${label} preview`}
+                                className="h-full w-full object-contain"
+                              />
+                            )}
+                            <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <Eye size={18} className="text-white" />
+                            </div>
+                          </button>
+                        ) : (
+                          <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">
+                            Not uploaded
+                          </span>
+                        )}
+
+                        {/* Action buttons — hidden once verified */}
+                        {canModify && (
+                          <div className="flex items-center justify-center gap-2 w-full pt-1">
+                            {/* Replace */}
+                            <label
+                              className={`flex items-center space-x-1 text-[10px] font-bold cursor-pointer px-2.5 py-1.5 rounded-lg border transition-colors ${
+                                isUpdating
+                                  ? "opacity-50 cursor-not-allowed bg-slate-100 border-slate-200 text-slate-400"
+                                  : "bg-white border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+                              }`}
+                            >
+                              {isUpdating ? (
+                                <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
+                              ) : (
+                                <Upload size={11} />
+                              )}
+                              <span>{src ? "Replace" : "Upload"}</span>
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                className="sr-only"
+                                disabled={isUpdating}
+                                onChange={(e) => handleReplaceDocument(type, e)}
+                              />
+                            </label>
+
+                            {/* Delete — only if document exists */}
+                            {src && (
+                              <button
+                                disabled={isUpdating}
+                                onClick={() => setConfirmDelete(type)}
+                                className={`flex items-center space-x-1 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors ${
+                                  isUpdating
+                                    ? "opacity-50 cursor-not-allowed bg-slate-100 border-slate-200 text-slate-400"
+                                    : "bg-white border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                                }`}
+                              >
+                                <Trash2 size={11} />
+                                <span>Remove</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Status revert notice when a doc is being managed */}
+            {canModify && app?.status !== "under_review" && (
+              <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4 text-left flex items-start space-x-3">
+                <RotateCcw
+                  size={16}
+                  className="text-amber-700 shrink-0 mt-0.5"
+                />
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  <span className="font-bold">Note:</span> Replacing or removing
+                  any document will automatically reset your application status
+                  to <span className="font-bold">Under Review</span>, requiring
+                  staff to re-evaluate your file.
+                </p>
               </div>
             )}
           </main>
         )}
       </div>
+
+      {/* Full-screen document preview modal */}
+      {previewDoc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreviewDoc(null)}
+        >
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <span className="text-sm font-bold text-slate-800">
+                {previewDoc.title}
+              </span>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-900 flex items-center justify-center p-6 min-h-80">
+              {previewDoc.src.startsWith("data:application/pdf") ? (
+                <iframe
+                  src={previewDoc.src}
+                  title={previewDoc.title}
+                  className="w-full h-[70vh] rounded-lg"
+                />
+              ) : (
+                <img
+                  src={previewDoc.src}
+                  alt={previewDoc.title}
+                  className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-left space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-red-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Remove Document?
+                </h4>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  This will delete the document and reset your application
+                  status back to{" "}
+                  <span className="font-bold text-emerald-700">
+                    Under Review
+                  </span>
+                  . Staff will need to re-evaluate your file.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteDocument(confirmDelete)}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
+              >
+                Yes, Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

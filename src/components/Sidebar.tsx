@@ -38,7 +38,7 @@ export const Sidebar: React.FC = () => {
 
     if (role === "arb") {
       return [
-        { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
+        { label: "Overview", path: "/my-application", icon: LayoutDashboard },
         { label: "My Application", path: "/my-application", icon: FileText },
         { label: "Help", path: "/help", icon: HelpCircle },
       ];
@@ -47,8 +47,7 @@ export const Sidebar: React.FC = () => {
     if (role === "staff") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "Review Applications", path: "/applications", icon: FileText },
-        { label: "Land Titles", path: "/land-titles", icon: MapPin },
+        { label: "Review Applications", path: "/review-apps", icon: FileText },
         { label: "Search Registry", path: "/search", icon: Search },
         { label: "Help", path: "/help", icon: HelpCircle },
       ];
@@ -68,17 +67,18 @@ export const Sidebar: React.FC = () => {
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         {
           label: "Review (Staff Stage)",
-          path: "/applications",
+          path: "/review-apps",
           icon: FileText,
         },
         { label: "Surveyor Stage", path: "/land-titles", icon: MapPin },
         { label: "Search Registry", path: "/search", icon: Search },
-        { label: "System Users", path: "/users", icon: Settings },
+        { label: "System Users", path: "/accounts", icon: Settings },
         { label: "Help", path: "/help", icon: HelpCircle },
       ];
     }
 
-    return [{ label: "Welcome", path: "/dashboard", icon: LayoutDashboard }];
+    // No profile loaded yet — return empty nav rather than exposing /dashboard
+    return [];
   };
 
   const navItems = getNavItems();

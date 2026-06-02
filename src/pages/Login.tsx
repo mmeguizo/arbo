@@ -18,7 +18,7 @@ export const Login: React.FC = () => {
 
     try {
       await signInWithEmailAndPassword(auth, email.trim(), password);
-      navigate("/dashboard");
+      navigate("/");
     } catch (err: any) {
       console.error("Login failure: ", err);
       if (

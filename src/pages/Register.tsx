@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
+
+import { useAuth } from "../contexts/AuthContext";
 import { auth, db } from "../firebase/config";
 import {
   ArrowLeft,
@@ -13,14 +15,27 @@ import {
   ChevronRight,
   ChevronLeft,
   Check,
+  Eye,
+  EyeOff,
   AlertCircle,
 } from "lucide-react";
 
+type DocumentField = "cedula" | "birthCert" | "brgyCert" | "picture";
+
+interface UploadedDocumentUrls {
+  cedula: string | null;
+  birthCert: string | null;
+  brgyCert: string | null;
+  picture: string | null;
+}
+
 export const Register: React.FC = () => {
   const navigate = useNavigate();
+  const { refreshProfile } = useAuth();
   const [step, setStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Form Fields
   const [name, setName] = useState("");
@@ -29,7 +44,18 @@ export const Register: React.FC = () => {
   const [age, setAge] = useState<number | "">("");
   const [contact, setContact] = useState("");
   const [address, setAddress] = useState("");
+
+  // Location cascade (PSGC API — Negros Occidental fixed)
+  const [municipality, setMunicipality] = useState("");
+  const [municipalityCode, setMunicipalityCode] = useState("");
   const [barangay, setBarangay] = useState("");
+  const [municipalities, setMunicipalities] = useState<
+    { code: string; name: string }[]
+  >([]);
+  const [barangays, setBarangays] = useState<{ code: string; name: string }[]>(
+    [],
+  );
+  const [locationLoading, setLocationLoading] = useState(false);
 
   // Document Uploads (Simulated / Stored as Base64/urls for sandbox robustness)
   const [docs, setDocs] = useState<{
@@ -56,13 +82,73 @@ export const Register: React.FC = () => {
     picture: "",
   });
 
+  // Load Negros Occidental municipalities on mount
+  React.useEffect(() => {
+    const loadMunicipalities = async () => {
+      setLocationLoading(true);
+      try {
+        const res = await fetch("https://psgc.cloud/api/v2/provinces");
+        const provinces: { code: string; name: string }[] = await res.json();
+        const negOcc = provinces.find((p) => p.name === "Negros Occidental");
+        if (negOcc) {
+          const res2 = await fetch(
+            `https://psgc.cloud/api/v2/provinces/${negOcc.code}/cities-municipalities`,
+          );
+          const items: { code: string; name: string }[] = await res2.json();
+          setMunicipalities(
+            [...items].sort((a, b) => a.name.localeCompare(b.name)),
+          );
+        }
+      } catch (e) {
+        console.error("Failed to load municipalities:", e);
+      } finally {
+        setLocationLoading(false);
+      }
+    };
+    loadMunicipalities();
+  }, []);
+
+  // Load barangays whenever municipality selection changes
+  React.useEffect(() => {
+    if (!municipalityCode) {
+      setBarangays([]);
+      setBarangay("");
+      return;
+    }
+    const loadBarangays = async () => {
+      setLocationLoading(true);
+      try {
+        const res = await fetch(
+          `https://psgc.cloud/api/v2/cities-municipalities/${municipalityCode}/barangays`,
+        );
+        const items: { code: string; name: string }[] = await res.json();
+        setBarangays([...items].sort((a, b) => a.name.localeCompare(b.name)));
+        setBarangay("");
+      } catch (e) {
+        console.error("Failed to load barangays:", e);
+      } finally {
+        setLocationLoading(false);
+      }
+    };
+    loadBarangays();
+  }, [municipalityCode]);
+
   // Handle local file select and convert to base64 for fallback storage or mock link
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: "cedula" | "birthCert" | "brgyCert" | "picture",
+    type: DocumentField,
   ) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError(
+          `${file.name} is larger than 5MB. Please choose a smaller file.`,
+        );
+        e.target.value = "";
+        return;
+      }
+
+      setError(null);
       setDocNames((prev) => ({ ...prev, [type]: file.name }));
 
       const reader = new FileReader();
@@ -76,7 +162,7 @@ export const Register: React.FC = () => {
   const handleNext = () => {
     setError(null);
     if (step === 1) {
-      if (!name || !age || !contact || !address || !barangay) {
+      if (!name || !age || !contact || !address || !municipality || !barangay) {
         setError("All personal details are required.");
         return;
       }
@@ -108,6 +194,10 @@ export const Register: React.FC = () => {
       return;
     }
 
+    let createdUser:
+      | Awaited<ReturnType<typeof createUserWithEmailAndPassword>>["user"]
+      | null = null;
+
     try {
       // 1. Create User in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
@@ -116,21 +206,27 @@ export const Register: React.FC = () => {
         password,
       );
       const user = userCredential.user;
-
-      // 2. Submit credentials and documents to Firestore
-      // To ensure that this works flawlessly even if storage bucket is not configured,
-      // we save user profile details and save base64 / mock strings for URLs directly in the database.
-      // This is extremely robust and secures pre-oral demo stability!
+      createdUser = user;
 
       const appRefId = `APP-${Math.floor(100000 + Math.random() * 900000)}`;
 
+      // Use the Base64 data URIs already generated by FileReader — no Firebase Storage needed
+      const uploadedDocuments: UploadedDocumentUrls = {
+        cedula: docs.cedula || null,
+        birthCert: docs.birthCert || null,
+        brgyCert: docs.brgyCert || null,
+        picture: docs.picture || null,
+      };
+
       // Save user record
       await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
         name: name.trim(),
         email: email.trim(),
         address: address.trim(),
         age: Number(age),
         contact: contact.trim(),
+        municipality: municipality.trim(),
         barangay: barangay.trim(),
         role: "arb",
         createdAt: new Date().toISOString(),
@@ -141,6 +237,7 @@ export const Register: React.FC = () => {
         applicationId: appRefId,
         userId: user.uid,
         userName: name.trim(),
+        userMunicipality: municipality.trim(),
         userBarangay: barangay.trim(),
         status: "under_review",
         submittedAt: new Date().toISOString(),
@@ -149,25 +246,40 @@ export const Register: React.FC = () => {
         approvedByAdmin: null,
         adminApprovedAt: null,
         notes: "",
-        documents: {
-          cedula: docs.cedula,
-          birthCert: docs.birthCert,
-          brgyCert: docs.brgyCert,
-          picture: docs.picture,
-        },
+        documents: uploadedDocuments,
       });
 
-      // Succesfully registered! Go to Dashboard
-      navigate("/dashboard");
-    } catch (err: any) {
+      await refreshProfile();
+
+      // Succesfully registered! Go to ARB landing page
+      navigate("/my-application");
+    } catch (err: unknown) {
       console.error("Registration error:", err);
-      if (err.code === "auth/email-already-in-use") {
+      const firebaseError = err as { code?: string; message?: string };
+
+      if (createdUser) {
+        try {
+          await deleteUser(createdUser);
+        } catch (cleanupError) {
+          console.error(
+            "Failed to rollback partially created auth user:",
+            cleanupError,
+          );
+        }
+      }
+
+      if (firebaseError.code === "auth/email-already-in-use") {
         setError("This email address is already in use.");
-      } else if (err.code === "auth/weak-password") {
+      } else if (firebaseError.code === "auth/weak-password") {
         setError("Password is too weak. Please use at least 6 characters.");
+      } else if (firebaseError.code?.includes("storage/")) {
+        setError(
+          "Document upload failed. Enable Firebase Storage in the console and try again.",
+        );
       } else {
         setError(
-          err.message || "Failed to complete registration. Please try again.",
+          firebaseError.message ||
+            "Failed to complete registration. Please try again.",
         );
       }
     } finally {
@@ -295,36 +407,85 @@ export const Register: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                    Barangay / Municipality
+                    City / Municipality
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                       <MapPin size={18} />
                     </div>
-                    <input
-                      type="text"
+                    <select
                       required
-                      value={barangay}
-                      onChange={(e) => setBarangay(e.target.value)}
-                      placeholder="Brgy. Malaya, Isabela"
-                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
-                    />
+                      value={municipalityCode}
+                      onChange={(e) => {
+                        const selected = municipalities.find(
+                          (m) => m.code === e.target.value,
+                        );
+                        setMunicipalityCode(e.target.value);
+                        setMunicipality(selected?.name ?? "");
+                      }}
+                      disabled={locationLoading && municipalities.length === 0}
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium appearance-none"
+                    >
+                      <option value="">
+                        {locationLoading && municipalities.length === 0
+                          ? "Loading..."
+                          : "Select municipality"}
+                      </option>
+                      {municipalities.map((m) => (
+                        <option key={m.code} value={m.code}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Complete Address
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Street name, Purok details, etc."
-                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
-                ></textarea>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Barangay
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <MapPin size={18} />
+                    </div>
+                    <select
+                      required
+                      value={barangay}
+                      onChange={(e) => setBarangay(e.target.value)}
+                      disabled={!municipalityCode || locationLoading}
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium appearance-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {!municipalityCode
+                          ? "Select municipality first"
+                          : locationLoading
+                            ? "Loading barangays..."
+                            : "Select barangay"}
+                      </option>
+                      {barangays.map((b) => (
+                        <option key={b.code} value={b.name}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                    Complete Address
+                  </label>
+                  <textarea
+                    required
+                    rows={1}
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Street name, Purok / Sitio, etc."
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
+                  ></textarea>
+                </div>
               </div>
 
               <div className="flex justify-end pt-4">
@@ -491,13 +652,23 @@ export const Register: React.FC = () => {
                     <Lock size={18} />
                   </div>
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-11 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-medium"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-emerald-800 transition-colors"
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </div>
 
@@ -515,7 +686,7 @@ export const Register: React.FC = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex items-center justify-center space-x-2 rounded-xl bg-emerald-850 hover:bg-emerald-950 py-3 px-8 text-sm font-semibold text-white transition-all shadow-lg shadow-emerald-900/10 cursor-pointer disabled:opacity-50"
+                  className="flex items-center justify-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 py-3 px-8 text-sm font-semibold text-white transition-all shadow-lg shadow-emerald-900/10 cursor-pointer disabled:opacity-50"
                 >
                   {loading ? (
                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
