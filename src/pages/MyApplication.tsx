@@ -6,44 +6,53 @@ import {
   collection,
   query,
   where,
-  limit,
   doc,
   updateDoc,
+  addDoc,
+  setDoc,
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+import { TitleMap } from "../components/TitleMap";
+import { formatDate } from "../utils/formatters";
 import {
   FileText,
-  Map,
   CreditCard,
-  Layers,
   MapPin,
-  Calendar,
   AlertCircle,
-  Hash,
   Upload,
   Trash2,
   Eye,
   X,
   RotateCcw,
+  User,
+  ScrollText,
+  Printer,
+  Camera,
 } from "lucide-react";
 
-type DocField = "cedula" | "birthCert" | "brgyCert";
+type DocField = "cedula" | "birthCert" | "brgyCert" | "picture";
 
 interface LandTitle {
   titleNumber: string;
   lotNumber: string;
   areaHectares: number;
   municipality: string;
+  province?: string;
   geoLat: string;
   geoLng: string;
   encodedAt: string;
+  awardedAt?: string;
+  beneficiaryName?: string;
+  landPhotos?: string[];
 }
 
 interface ApplicationData {
   applicationId: string;
   status: ApplicationStatus;
   submittedAt: string;
+  staffNotes: string;
+  adminNotes: string;
   documents: {
     cedula: string | null;
     birthCert: string | null;
@@ -55,9 +64,20 @@ interface ApplicationData {
 
 export const MyApplication: React.FC = () => {
   const { profile, user } = useAuth();
-  const [app, setApp] = useState<ApplicationData | null>(null);
-  const [title, setTitle] = useState<LandTitle | null>(null);
+  const [apps, setApps] = useState<ApplicationData[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [titles, setTitles] = useState<LandTitle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [arbResponse, setArbResponse] = useState("");
+
+  // Derived: current selected app
+  const app =
+    apps.length > 0 ? apps[Math.min(selectedIdx, apps.length - 1)] : null;
+
+  // Certificate modal state
+  const [certificateTitle, setCertificateTitle] = useState<LandTitle | null>(
+    null,
+  );
 
   // Document management state
   const [previewDoc, setPreviewDoc] = useState<{
@@ -69,7 +89,8 @@ export const MyApplication: React.FC = () => {
   const [docError, setDocError] = useState<string | null>(null);
 
   // Only allow edits before final approval
-  const canModify = app && app.status !== "verified" && app.status !== "awarded";
+  const canModify =
+    app && app.status !== "verified" && app.status !== "awarded";
 
   // After modifying a doc, push back to under_review so staff re-evaluates
   const revertedStatus = (): ApplicationStatus => "under_review";
@@ -97,6 +118,17 @@ export const MyApplication: React.FC = () => {
           [`documents.${type}`]: base64,
           status: newStatus,
         });
+        // Audit log for document upload
+        await addDoc(collection(db, "auditLogs"), {
+          applicationId: app.applicationId,
+          timestamp: new Date().toISOString(),
+          actor: profile?.name || "ARB User",
+          actorRole: "arb",
+          action: "document_updated",
+          oldStatus: app.status,
+          newStatus,
+          notes: `Updated document: ${type}`,
+        });
         // Listener will auto-update the UI
       } catch (err) {
         console.error("Failed to replace document:", err);
@@ -120,6 +152,17 @@ export const MyApplication: React.FC = () => {
         [`documents.${type}`]: null,
         status: newStatus,
       });
+      // Audit log for document removal
+      await addDoc(collection(db, "auditLogs"), {
+        applicationId: app.applicationId,
+        timestamp: new Date().toISOString(),
+        actor: profile?.name || "ARB User",
+        actorRole: "arb",
+        action: "document_removed",
+        oldStatus: app.status,
+        newStatus,
+        notes: `Removed document: ${type}`,
+      });
       // Listener will auto-update the UI
     } catch (err) {
       console.error("Failed to delete document:", err);
@@ -134,38 +177,42 @@ export const MyApplication: React.FC = () => {
 
     setLoading(true);
 
-    // 1. Real-time listener for user's application
+    // 1. Real-time listener for ALL user's applications
     const q = query(
       collection(db, "applications"),
       where("userId", "==", user.uid),
-      limit(1),
     );
-    const unsubApp = onSnapshot(q, (snap) => {
-      if (!snap.empty) {
-        const appDoc = snap.docs[0];
-        const appData = appDoc.data() as ApplicationData;
-        setApp({ ...appData, applicationId: appDoc.id });
-      } else {
-        setApp(null);
-      }
-      setLoading(false);
-    }, (err) => {
-      console.error("Error fetching application:", err);
-      setLoading(false);
-    });
+    const unsubApp = onSnapshot(
+      q,
+      (snap) => {
+        const list: ApplicationData[] = [];
+        snap.forEach((d) => {
+          const appData = d.data() as ApplicationData;
+          list.push({ ...appData, applicationId: d.id });
+        });
+        // Sort newest first
+        list.sort((a, b) =>
+          (b.submittedAt || "").localeCompare(a.submittedAt || ""),
+        );
+        setApps(list);
+        if (list.length > 0 && selectedIdx >= list.length) setSelectedIdx(0);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error fetching application:", err);
+        setLoading(false);
+      },
+    );
 
-    // 2. Real-time listener for land title
+    // 2. Real-time listener for all land titles (ARB can have multiple)
     const tQ = query(
       collection(db, "landTitles"),
       where("beneficiaryId", "==", user.uid),
-      limit(1),
     );
     const unsubTitle = onSnapshot(tQ, (snap) => {
-      if (!snap.empty) {
-        setTitle(snap.docs[0].data() as LandTitle);
-      } else {
-        setTitle(null);
-      }
+      const results: LandTitle[] = [];
+      snap.forEach((d) => results.push(d.data() as LandTitle));
+      setTitles(results);
     });
 
     return () => {
@@ -190,6 +237,60 @@ export const MyApplication: React.FC = () => {
             </h1>
           </div>
         </header>
+
+        {/* App selector + create new */}
+        {!loading && apps.length > 0 && (
+          <div className="bg-white border-b border-slate-100 px-8 py-2 flex items-center gap-2 flex-wrap">
+            {apps.map((a, i) => (
+              <button
+                key={a.applicationId}
+                onClick={() => setSelectedIdx(i)}
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
+                  i === selectedIdx
+                    ? "bg-emerald-800 text-white border-emerald-800"
+                    : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {a.applicationId}
+                <span className="ml-1 opacity-70">
+                  ({a.status.replace(/_/g, " ")})
+                </span>
+              </button>
+            ))}
+            {/* Show "Create New" if first app is awarded or disputed */}
+            {apps[0]?.status === "awarded" || apps[0]?.status === "disputed" ? (
+              <button
+                onClick={async () => {
+                  if (!user) return;
+                  const appRefId = `APP-${Math.floor(100000 + Math.random() * 900000)}`;
+                  await setDoc(doc(db, "applications", appRefId), {
+                    applicationId: appRefId,
+                    userId: user.uid,
+                    userName: profile?.name || "",
+                    userEmail: profile?.email || "",
+                    userMunicipality: profile?.municipality || "",
+                    userBarangay: profile?.barangay || "",
+                    userProvince: profile?.province || "",
+                    status: "under_review",
+                    submittedAt: new Date().toISOString(),
+                    staffNotes: "",
+                    adminNotes: "",
+                    notes: "",
+                    documents: {
+                      cedula: null,
+                      birthCert: null,
+                      brgyCert: null,
+                      picture: null,
+                    },
+                  });
+                }}
+                className="ml-auto text-xs font-bold px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+              >
+                + New Application
+              </button>
+            ) : null}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
@@ -287,16 +388,78 @@ export const MyApplication: React.FC = () => {
                       </div>
                       <p className="text-xs text-slate-500 leading-relaxed pt-2">
                         {app.status === "under_review" &&
-                          "Your application credentials have been successfully uploaded. DAR municipal evaluators are manually checking your files."}
-                        {app.status === "pending" &&
-                          "Municipal staff has verified your files! Waiting on Admin/Regional Director final confirmation."}
+                          "Your application is under review by DAR municipal staff. They are verifying your credentials and documents."}
+                        {app.status === "forwarded_to_surveyor" &&
+                          "Staff has verified your documents! Forwarded to the surveyor team for land title encoding."}
                         {app.status === "verified" &&
-                          "Your application has been fully approved by the Admin/Regional Director. The surveyor team will now encode your land title boundaries."}
+                          "Surveyor has encoded your land details. Awaiting Admin/Regional Director approval."}
                         {app.status === "awarded" &&
-                          "Congratulations! Your CLOA title has been officially awarded. The surveyor has encoded your land parcel details — check below for your title card."}
+                          "Congratulations! Your CLOA title has been officially awarded. See your land details below."}
                         {app.status === "disputed" &&
-                          "There is an issue with your credentials/residency. Please reach out to your municipal officer immediately."}
+                          "Your application has been flagged for review. See remarks below for details on what needs to be corrected."}
                       </p>
+                      {/* Show remarks if disputed or if any remarks exist */}
+                      {(app.status === "disputed" ||
+                        app.staffNotes ||
+                        app.adminNotes) && (
+                        <div className="space-y-1 pt-1">
+                          {app.staffNotes && (
+                            <p className="text-[11px] bg-orange-50 text-orange-700 border border-orange-100 px-3 py-1.5 rounded-lg">
+                              <span className="font-bold">Staff Remarks:</span>{" "}
+                              {app.staffNotes}
+                            </p>
+                          )}
+                          {app.adminNotes && (
+                            <p className="text-[11px] bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1.5 rounded-lg">
+                              <span className="font-bold">Admin Remarks:</span>{" "}
+                              {app.adminNotes}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {/* ARB response box when disputed */}
+                      {app.status === "disputed" && (
+                        <div className="space-y-2 pt-2">
+                          <textarea
+                            rows={2}
+                            placeholder="Respond to the evaluator's remarks (e.g., clarify information, explain corrections)..."
+                            value={arbResponse}
+                            onChange={(e) => setArbResponse(e.target.value)}
+                            className="block w-full rounded-xl border border-slate-200 bg-white py-2 px-3 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                          <button
+                            onClick={async () => {
+                              if (!arbResponse.trim() || !app) return;
+                              setLoading(true);
+                              const appRef = doc(
+                                db,
+                                "applications",
+                                app.applicationId,
+                              );
+                              await updateDoc(appRef, {
+                                arbResponse: arbResponse.trim(),
+                                status: "under_review",
+                              });
+                              await addDoc(collection(db, "auditLogs"), {
+                                applicationId: app.applicationId,
+                                timestamp: new Date().toISOString(),
+                                actor: profile?.name || "ARB User",
+                                actorRole: "arb",
+                                action: "arb_response",
+                                oldStatus: "disputed",
+                                newStatus: "under_review",
+                                notes: `ARB response: ${arbResponse.trim()}`,
+                              });
+                              setArbResponse("");
+                              setLoading(false);
+                            }}
+                            disabled={loading || !arbResponse.trim()}
+                            className="rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-2 px-4 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            Respond &amp; Resubmit for Review
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-6 text-slate-400 italic text-xs">
@@ -317,92 +480,144 @@ export const MyApplication: React.FC = () => {
               </div>
             </div>
 
-            {/* Awarded land title details widget (Renders ONLY if surveyor has encoded title) */}
-            {title ? (
-              <div className="bg-white rounded-2xl border border-emerald-250 shadow-sm p-6 text-left border-l-8 border-l-emerald-800 space-y-6">
-                <div>
-                  <span className="text-[10px] uppercase bg-emerald-50 text-emerald-800 border-emerald-200 border px-2.5 py-1 rounded inline-block font-extrabold">
-                    Certificate of Land Ownership Award (CLOA)
-                  </span>
-                  <h2 className="text-xl font-bold tracking-tight text-slate-900 mt-2">
-                    Awarded Agrarian Land Parcel
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    This is your official title details encoded and verified by
-                    the DAR Municipal Surveyor.
-                  </p>
+            {/* Land titles section — shows ALL awarded titles in a table */}
+            {titles.length > 0 ? (
+              <div className="bg-white rounded-2xl border border-emerald-250 shadow-sm p-6 text-left space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase bg-emerald-50 text-emerald-800 border-emerald-200 border px-2.5 py-1 rounded inline-block font-extrabold">
+                      Certificate of Land Ownership Award (CLOA)
+                    </span>
+                    <h2 className="text-xl font-bold tracking-tight text-slate-900 mt-2">
+                      Awarded Agrarian Land Parcel{titles.length > 1 ? "s" : ""}
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {titles.length > 1
+                        ? `You have ${titles.length} awarded land titles.`
+                        : "Your official title details encoded and verified by the DAR Municipal Surveyor."}
+                    </p>
+                  </div>
+                  {titles.length > 1 && (
+                    <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full">
+                      {titles.length} titles
+                    </span>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-2 text-sm">
-                  <div className="bg-slate-50 p-4 border border-slate-100 rounded-xl flex items-center space-x-3.5">
-                    <Hash size={20} className="text-emerald-800" />
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-450 uppercase block">
-                        Title Number (OCT/TCT)
-                      </span>
-                      <span className="font-extrabold text-slate-800">
-                        {title.titleNumber}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 border border-slate-100 rounded-xl flex items-center space-x-3.5">
-                    <Layers size={20} className="text-emerald-800" />
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-450 uppercase block">
-                        Lot / Parcel Number
-                      </span>
-                      <span className="font-extrabold text-slate-800">
-                        {title.lotNumber}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 border border-slate-100 rounded-xl flex items-center space-x-3.5">
-                    <Map size={20} className="text-emerald-800" />
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-450 uppercase block">
-                        Land Area
-                      </span>
-                      <span className="font-extrabold text-slate-800">
-                        {title.areaHectares} Hectares
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 border border-slate-100 rounded-xl flex items-center space-x-3.5">
-                    <MapPin size={20} className="text-emerald-800" />
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-450 uppercase block">
-                        Municipality
-                      </span>
-                      <span className="font-extrabold text-slate-800">
-                        {title.municipality}
-                      </span>
-                    </div>
-                  </div>
+                {/* Desktop table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left">
+                        <th className="pb-3 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                          Title #
+                        </th>
+                        <th className="pb-3 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                          Lot #
+                        </th>
+                        <th className="pb-3 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                          Area (ha)
+                        </th>
+                        <th className="pb-3 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                          Municipality
+                        </th>
+                        <th className="pb-3 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                          Coordinates
+                        </th>
+                        <th className="pb-3 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                          Awarded
+                        </th>
+                        <th className="pb-3 text-[10px] uppercase font-bold text-slate-400 tracking-wider text-center">
+                          CLOA
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {titles.map((t, i) => (
+                        <tr
+                          key={i}
+                          className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50"
+                        >
+                          <td className="py-3 pr-4 font-extrabold text-slate-800">
+                            {t.titleNumber}
+                          </td>
+                          <td className="py-3 pr-4 font-bold text-slate-700">
+                            {t.lotNumber}
+                          </td>
+                          <td className="py-3 pr-4 font-bold text-emerald-800">
+                            {t.areaHectares}
+                          </td>
+                          <td className="py-3 pr-4 font-medium text-slate-600">
+                            {t.municipality}
+                          </td>
+                          <td className="py-3 pr-4 font-mono text-xs text-slate-500">
+                            {t.geoLat}, {t.geoLng}
+                          </td>
+                          <td className="py-3 text-xs text-slate-500">
+                            {new Date(t.encodedAt).toLocaleDateString()}
+                          </td>
+                          <td className="py-3 text-center">
+                            <button
+                              onClick={() => setCertificateTitle(t)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2.5 py-1.5 text-[10px] font-bold transition-colors cursor-pointer"
+                            >
+                              <Eye size={12} />
+                              <span>View</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
 
-                <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-xs">
-                  <div className="flex items-center space-x-2">
-                    <div className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse"></div>
-                    <span className="font-semibold text-emerald-900">
-                      Geographic Coordinates verified by Surveyor:
-                    </span>
-                    <span className="font-mono text-slate-700 bg-white border px-2 py-0.5 rounded font-bold">
-                      Lat: {title.geoLat}, Lng: {title.geoLng}
-                    </span>
-                  </div>
-                  <span className="text-slate-450 italic flex items-center space-x-1">
-                    <Calendar size={12} />
-                    <span>
-                      Awarded on:{" "}
-                      {new Date(title.encodedAt).toLocaleDateString()}
-                    </span>
-                  </span>
+                {/* Mobile cards */}
+                <div className="grid grid-cols-1 sm:hidden gap-4 pt-2">
+                  {titles.map((t, i) => (
+                    <div
+                      key={i}
+                      className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-slate-800">
+                          {t.titleNumber}
+                        </span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                          {t.areaHectares} ha
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                        <span>
+                          <span className="font-semibold text-slate-500">
+                            Lot:
+                          </span>{" "}
+                          {t.lotNumber}
+                        </span>
+                        <span>
+                          <span className="font-semibold text-slate-500">
+                            Mun:
+                          </span>{" "}
+                          {t.municipality}
+                        </span>
+                        <span className="col-span-2 font-mono text-[10px] text-slate-400">
+                          {t.geoLat}, {t.geoLng}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Awarded: {new Date(t.encodedAt).toLocaleDateString()}
+                      </p>
+                      <button
+                        onClick={() => setCertificateTitle(t)}
+                        className="w-full mt-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2.5 py-1.5 text-[10px] font-bold transition-colors cursor-pointer"
+                      >
+                        <Eye size={12} />
+                        <span>View CLOA Certificate</span>
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ) : (app?.status === "verified" || app?.status === "awarded") ? (
+            ) : app?.status === "verified" || app?.status === "awarded" ? (
               <div className="bg-amber-50 rounded-2xl border border-amber-250 p-6 text-left flex items-start space-x-3.5">
                 <AlertCircle
                   size={22}
@@ -419,6 +634,18 @@ export const MyApplication: React.FC = () => {
                     limits and award your TCT title card in the digital system.
                   </p>
                 </div>
+              </div>
+            ) : app ? (
+              /* No land titles yet — show empty state */
+              <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-300 p-6 text-center">
+                <MapPin size={24} className="text-slate-300 mx-auto mb-2" />
+                <h3 className="text-sm font-bold text-slate-500">
+                  No Land Titles Yet
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Once your application is approved and the surveyor encodes
+                  your land details, your awarded land titles will appear here.
+                </p>
               </div>
             ) : null}
 
@@ -454,7 +681,7 @@ export const MyApplication: React.FC = () => {
                 )}
 
                 {/* Document cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 mt-5">
                   {(
                     [
                       {
@@ -479,6 +706,13 @@ export const MyApplication: React.FC = () => {
                         sub: "10-year municipal proof",
                         icon: <MapPin size={18} className="text-slate-500" />,
                         src: app.documents.brgyCert,
+                      },
+                      {
+                        type: "picture" as DocField,
+                        label: "Profile Picture",
+                        sub: "Beneficiary photo",
+                        icon: <User size={18} className="text-slate-500" />,
+                        src: app.documents.picture,
                       },
                     ] as {
                       type: DocField;
@@ -674,6 +908,198 @@ export const MyApplication: React.FC = () => {
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer"
               >
                 Yes, Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CLOA Certificate Modal */}
+      {certificateTitle && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden text-left border border-slate-200 my-auto">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-900 text-white sticky top-0 z-10">
+              <div className="flex items-center gap-3">
+                <ScrollText size={20} className="text-amber-400" />
+                <div>
+                  <h3 className="font-bold text-sm">
+                    Certificate of Land Ownership Award (CLOA)
+                  </h3>
+                  <p className="text-[10px] text-emerald-200 font-mono mt-0.5">
+                    {certificateTitle.titleNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCertificateTitle(null)}
+                className="text-emerald-200 hover:text-white p-2 rounded-lg transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+              {/* Certificate Hero */}
+              <div className="bg-gradient-to-br from-emerald-50 via-white to-amber-50 border-2 border-emerald-200 rounded-2xl p-8 text-center relative overflow-hidden">
+                {/* Decorative border */}
+                <div className="absolute inset-0 border-4 border-emerald-800/10 rounded-2xl pointer-events-none"></div>
+                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-emerald-800 via-amber-500 to-emerald-800"></div>
+
+                {/* Seal */}
+                <div className="h-16 w-16 rounded-full bg-emerald-800 flex items-center justify-center mx-auto mb-4 shadow-lg border-2 border-amber-400">
+                  <div className="text-center text-white">
+                    <p className="text-[8px] leading-3 font-extrabold tracking-wider">
+                      DAR
+                    </p>
+                    <p className="text-[6px] leading-3 font-semibold text-amber-300">
+                      PH
+                    </p>
+                  </div>
+                </div>
+
+                <h2 className="text-lg font-extrabold text-emerald-900 uppercase tracking-wide">
+                  Republic of the Philippines
+                </h2>
+                <p className="text-xs font-bold text-emerald-700 mt-1">
+                  Department of Agrarian Reform
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest">
+                  Certificate of Land Ownership Award (CLOA)
+                </p>
+
+                <div className="w-24 h-0.5 bg-amber-400 mx-auto my-4"></div>
+
+                <p className="text-sm font-bold text-slate-700">
+                  This certifies that the parcel of land described below has
+                  been awarded to
+                </p>
+                <h3 className="text-xl font-extrabold text-emerald-900 mt-2 tracking-tight">
+                  {certificateTitle.beneficiaryName || profile?.name}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  As an Agrarian Reform Beneficiary (ARB) under the
+                  Comprehensive Agrarian Reform Program
+                </p>
+              </div>
+
+              {/* Title Summary Table */}
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div className="bg-slate-50 px-5 py-3 border-b border-slate-200">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Awarded Agrarian Land Parcel
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-[9px] uppercase font-bold text-slate-400 tracking-wider">
+                      <tr>
+                        <th className="px-5 py-3 text-left">Title #</th>
+                        <th className="px-5 py-3 text-left">Lot #</th>
+                        <th className="px-5 py-3 text-left">Area (ha)</th>
+                        <th className="px-5 py-3 text-left">Municipality</th>
+                        <th className="px-5 py-3 text-left">Coordinates</th>
+                        <th className="px-5 py-3 text-left">Awarded</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t border-slate-100">
+                        <td className="px-5 py-4 font-extrabold text-slate-900">
+                          {certificateTitle.titleNumber}
+                        </td>
+                        <td className="px-5 py-4 font-bold text-slate-700">
+                          {certificateTitle.lotNumber}
+                        </td>
+                        <td className="px-5 py-4 font-bold text-emerald-800">
+                          {certificateTitle.areaHectares}
+                        </td>
+                        <td className="px-5 py-4 font-medium text-slate-600">
+                          {certificateTitle.municipality}
+                        </td>
+                        <td className="px-5 py-4 font-mono text-xs text-slate-500">
+                          {certificateTitle.geoLat}, {certificateTitle.geoLng}
+                        </td>
+                        <td className="px-5 py-4 text-xs text-slate-500">
+                          {formatDate(
+                            certificateTitle.awardedAt ||
+                              certificateTitle.encodedAt,
+                          )}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Map */}
+              {certificateTitle.geoLat && certificateTitle.geoLat && (
+                <div>
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+                    <MapPin size={14} className="text-emerald-700" />
+                    Land Parcel Location
+                  </h4>
+                  <TitleMap
+                    geoLat={certificateTitle.geoLat}
+                    geoLng={certificateTitle.geoLng}
+                    height={200}
+                    interactive={false}
+                  />
+                </div>
+              )}
+
+              {/* Land Photos */}
+              {certificateTitle.landPhotos &&
+                certificateTitle.landPhotos.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+                      <Camera size={14} className="text-emerald-700" />
+                      Land Photos
+                    </h4>
+                    <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                      {certificateTitle.landPhotos.map((src, i) => (
+                        <div
+                          key={i}
+                          className="aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50"
+                        >
+                          <img
+                            src={src}
+                            alt={`Land photo ${i + 1}`}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {/* Footer note */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+                <p className="text-[10px] text-amber-800 leading-relaxed">
+                  This digital certificate serves as official proof of CLOA
+                  award. The corresponding Original Certificate of Title (OCT)
+                  and Transfer Certificate of Title (TCT) are registered with
+                  the Land Registration Authority (LRA) under DAR's agrarian
+                  reform program.
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex items-center justify-between sticky bottom-0">
+              <button
+                onClick={() => {
+                  window.print();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 py-2 px-4 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <Printer size={14} />
+                <span>Print</span>
+              </button>
+              <button
+                onClick={() => setCertificateTitle(null)}
+                className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

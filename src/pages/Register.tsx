@@ -148,8 +148,33 @@ export const Register: React.FC = () => {
         setBarangays([...items].sort((a, b) => a.name.localeCompare(b.name)));
         setBarangay("");
       } catch (e) {
-        setBarangays([]);
-        console.error("Failed to load barangays:", e);
+        console.error("PSGC API failed, falling back to local data:", e);
+        // Fallback: use barangays from locality.json
+        const fallback = (() => {
+          for (const p of localityData.provinces) {
+            const mun = p.municipalities.find(
+              (m) => m.code === municipalityCode,
+            );
+            if (mun && "barangays" in mun) {
+              return (
+                mun as {
+                  code: string;
+                  name: string;
+                  barangays: PsgcLocationItem[];
+                }
+              ).barangays;
+            }
+          }
+          return null;
+        })();
+        if (fallback && fallback.length > 0) {
+          setBarangays(
+            [...fallback].sort((a, b) => a.name.localeCompare(b.name)),
+          );
+        } else {
+          setBarangays([]);
+        }
+        setBarangay("");
       } finally {
         setLocationLoading(false);
       }
@@ -165,7 +190,9 @@ export const Register: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        setError(`${file.name} is larger than 5MB. Please choose a smaller file.`);
+        setError(
+          `${file.name} is larger than 5MB. Please choose a smaller file.`,
+        );
         e.target.value = "";
         return;
       }
@@ -197,7 +224,7 @@ export const Register: React.FC = () => {
           canvas.height = height;
           const ctx = canvas.getContext("2d");
           ctx?.drawImage(img, 0, 0, width, height);
-          
+
           // Compress heavily (0.6 quality) to guarantee we stay far below the 1MB Firestore limit
           const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
           setDocs((prev) => ({ ...prev, [type]: dataUrl }));
@@ -211,18 +238,21 @@ export const Register: React.FC = () => {
   const handleNext = () => {
     setError(null);
     if (step === 1) {
-      if (!name || !age || !contact || !address || !province || !municipality || !barangay) {
+      if (
+        !name ||
+        !age ||
+        !contact ||
+        !address ||
+        !province ||
+        !municipality ||
+        !barangay
+      ) {
         setError("All personal details including province are required.");
         return;
       }
       setStep(2);
     } else if (step === 2) {
-      if (!docs.cedula || !docs.birthCert || !docs.brgyCert || !docs.picture) {
-        setError(
-          "All documents (Cedula, Birth Cert, Barangay Cert, Profile Picture) must be uploaded.",
-        );
-        return;
-      }
+      // Documents are optional — can be uploaded later from the account
       setStep(3);
     }
   };
@@ -473,7 +503,9 @@ export const Register: React.FC = () => {
                     >
                       <option value="">Select province</option>
                       {provinceOptions.map((p) => (
-                        <option key={p} value={p}>{p}</option>
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -682,14 +714,23 @@ export const Register: React.FC = () => {
                   <span>Personal Details</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  className="flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 py-3 px-6 text-sm font-semibold text-white transition-all shadow-lg cursor-pointer"
-                >
-                  <span>Setup Credentials</span>
-                  <ChevronRight size={16} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className="rounded-xl border border-slate-300 hover:bg-slate-100 py-3 px-5 text-sm font-semibold text-slate-500 transition-all cursor-pointer"
+                  >
+                    Skip for now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    className="flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 py-3 px-6 text-sm font-semibold text-white transition-all shadow-lg cursor-pointer"
+                  >
+                    <span>Setup Credentials</span>
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
               </div>
             </div>
           )}

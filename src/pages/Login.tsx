@@ -1,8 +1,19 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import { auth } from "../firebase/config";
-import { LogIn, Lock, Mail, AlertCircle, Eye, EyeOff, KeyRound } from "lucide-react";
+import {
+  LogIn,
+  Lock,
+  Mail,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  KeyRound,
+} from "lucide-react";
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -45,12 +56,17 @@ export const Login: React.FC = () => {
       navigate("/");
     } catch (err: any) {
       console.error("Login failure: ", err);
-      if (
-        err.code === "auth/user-not-found" ||
+      if (err.code === "auth/user-not-found") {
+        setError(
+          "No account found with this email. Please create an account first.",
+        );
+      } else if (
         err.code === "auth/wrong-password" ||
         err.code === "auth/invalid-credential"
       ) {
-        setError("Invalid email or password. Please try again.");
+        setError("Invalid password. Please try again.");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Please enter a valid email address.");
       } else {
         setError("An unexpected error occurred. Please try again later.");
       }
@@ -93,9 +109,9 @@ export const Login: React.FC = () => {
             Resilient Agrarian Communities in Negros
           </h2>
           <p className="text-emerald-100 max-w-lg leading-relaxed text-sm">
-            Empowering Agrarian Reform Beneficiaries (ARBs) across Negros Occidental and
-            Negros Oriental through transparent, streamlined, and structured digital land
-            title processing and tracking.
+            Empowering Agrarian Reform Beneficiaries (ARBs) across Negros
+            Occidental and Negros Oriental through transparent, streamlined, and
+            structured digital land title processing and tracking.
           </p>
         </div>
 
@@ -122,7 +138,9 @@ export const Login: React.FC = () => {
           {resetSent && (
             <div className="mb-6 flex items-start space-x-2.5 rounded-xl bg-emerald-50 p-4 border border-emerald-200 text-sm text-emerald-700">
               <KeyRound size={18} className="shrink-0 mt-0.5" />
-              <span className="font-semibold">Password reset email sent! Check your inbox.</span>
+              <span className="font-semibold">
+                Password reset email sent! Check your inbox.
+              </span>
             </div>
           )}
 
@@ -153,22 +171,22 @@ export const Login: React.FC = () => {
               </div>
             </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Password
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    disabled={resetLoading}
-                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline transition-colors disabled:opacity-50"
-                  >
-                    <KeyRound size={12} className="inline mr-0.5" />
-                    Forgot Password?
-                  </button>
-                </div>
-                <div className="relative rounded-xl shadow-sm">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={resetLoading}
+                  className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline transition-colors disabled:opacity-50"
+                >
+                  <KeyRound size={12} className="inline mr-0.5" />
+                  Forgot Password?
+                </button>
+              </div>
+              <div className="relative rounded-xl shadow-sm">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
                   <Lock size={18} />
                 </div>

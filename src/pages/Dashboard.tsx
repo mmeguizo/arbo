@@ -2,7 +2,14 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Sidebar } from "../components/Sidebar";
 import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
-import { collection, query, where, onSnapshot, limit, orderBy } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  limit,
+  orderBy,
+} from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
   Users,
@@ -60,7 +67,7 @@ export const Dashboard: React.FC = () => {
   });
   const [applications, setApplications] = useState<AppRecord[]>([]);
   const [landTitles, setLandTitles] = useState<LandTitle[]>([]);
-  
+
   const [searchQuery, setSearchQuery] = useState("");
   const [searchError, setSearchError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -100,27 +107,35 @@ export const Dashboard: React.FC = () => {
     });
 
     // 3. Listen to Applications Registry (limited to 100 for scalability)
-    const qApps = query(collection(db, "applications"), orderBy("submittedAt", "desc"), limit(100));
-    const unsubApps = onSnapshot(qApps, (snap) => {
-      const appList: AppRecord[] = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        appList.push({
-          id: d.id,
-          userName: data.userName || "Unknown",
-          userBarangay: data.userBarangay || "—",
-          userMunicipality: data.userMunicipality || "",
-          userProvince: data.userProvince || "",
-          status: data.status as ApplicationStatus,
-          submittedAt: data.submittedAt || "",
+    const qApps = query(
+      collection(db, "applications"),
+      orderBy("submittedAt", "desc"),
+      limit(100),
+    );
+    const unsubApps = onSnapshot(
+      qApps,
+      (snap) => {
+        const appList: AppRecord[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          appList.push({
+            id: d.id,
+            userName: data.userName || "Unknown",
+            userBarangay: data.userBarangay || "—",
+            userMunicipality: data.userMunicipality || "",
+            userProvince: data.userProvince || "",
+            status: data.status as ApplicationStatus,
+            submittedAt: data.submittedAt || "",
+          });
         });
-      });
-      setApplications(appList);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching applications:", error);
-      setLoading(false);
-    });
+        setApplications(appList);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching applications:", error);
+        setLoading(false);
+      },
+    );
 
     return () => {
       unsubUsers();
@@ -170,11 +185,15 @@ export const Dashboard: React.FC = () => {
     );
   };
 
-  const selectedTitle = selectedApp ? landTitles.find((t) => t.applicationId === selectedApp.id) : null;
+  const selectedTitle = selectedApp
+    ? landTitles.find((t) => t.applicationId === selectedApp.id)
+    : null;
 
   // Staff-specific dashboard
   if (profile?.role === "staff") {
-    const underReviewCount = applications.filter(a => a.status === "under_review").length;
+    const underReviewCount = applications.filter(
+      (a) => a.status === "under_review",
+    ).length;
     return (
       <div className="flex h-screen bg-slate-50 overflow-hidden">
         <Sidebar />
@@ -193,21 +212,43 @@ export const Dashboard: React.FC = () => {
                 Welcome, {profile?.name}
               </h2>
               <p className="text-slate-500 text-xs leading-relaxed mb-6">
-                You are logged in as a DAR Staff member. Review ARB applications,
-                verify documents, and forward qualified applicants to the Admin for final approval.
+                You are logged in as a DAR Staff member. Review ARB
+                applications, verify documents, and forward qualified applicants
+                to the Admin for final approval.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-center">
-                  <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">Under Review</span>
-                  <p className="text-2xl font-extrabold text-orange-900 mt-1">{underReviewCount}</p>
+                  <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider">
+                    Under Review
+                  </span>
+                  <p className="text-2xl font-extrabold text-orange-900 mt-1">
+                    {underReviewCount}
+                  </p>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
-                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Pending Admin</span>
-                  <p className="text-2xl font-extrabold text-amber-900 mt-1">{applications.filter(a => a.status === "pending").length}</p>
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+                    Surveyor Stage
+                  </span>
+                  <p className="text-2xl font-extrabold text-amber-900 mt-1">
+                    {
+                      applications.filter(
+                        (a) => a.status === "forwarded_to_surveyor",
+                      ).length
+                    }
+                  </p>
                 </div>
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Resolved</span>
-                  <p className="text-2xl font-extrabold text-emerald-900 mt-1">{applications.filter(a => a.status === "verified" || a.status === "awarded").length}</p>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                    Resolved
+                  </span>
+                  <p className="text-2xl font-extrabold text-emerald-900 mt-1">
+                    {
+                      applications.filter(
+                        (a) =>
+                          a.status === "verified" || a.status === "awarded",
+                      ).length
+                    }
+                  </p>
                 </div>
               </div>
               <Link
@@ -226,7 +267,9 @@ export const Dashboard: React.FC = () => {
 
   // Surveyor-specific dashboard
   if (profile?.role === "surveyor") {
-    const awardedCount = applications.filter(a => a.status === "awarded").length;
+    const awardedCount = applications.filter(
+      (a) => a.status === "awarded",
+    ).length;
     const totalTitles = landTitles.length;
     return (
       <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -251,16 +294,32 @@ export const Dashboard: React.FC = () => {
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-center">
-                  <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Verified (Ready)</span>
-                  <p className="text-2xl font-extrabold text-indigo-900 mt-1">{applications.filter(a => a.status === "verified").length}</p>
+                  <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
+                    Forwarded (Ready)
+                  </span>
+                  <p className="text-2xl font-extrabold text-amber-900 mt-1">
+                    {
+                      applications.filter(
+                        (a) => a.status === "forwarded_to_surveyor",
+                      ).length
+                    }
+                  </p>
                 </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
-                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Awarded (Done)</span>
-                  <p className="text-2xl font-extrabold text-blue-900 mt-1">{awardedCount}</p>
+                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+                    Awarded (Done)
+                  </span>
+                  <p className="text-2xl font-extrabold text-blue-900 mt-1">
+                    {awardedCount}
+                  </p>
                 </div>
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Total Titles</span>
-                  <p className="text-2xl font-extrabold text-emerald-900 mt-1">{totalTitles}</p>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                    Total Titles
+                  </span>
+                  <p className="text-2xl font-extrabold text-emerald-900 mt-1">
+                    {totalTitles}
+                  </p>
                 </div>
               </div>
               <Link
@@ -462,7 +521,7 @@ export const Dashboard: React.FC = () => {
               <form onSubmit={handleSearchSubmit} className="space-y-4 my-auto">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                     OCT/TCT Number
+                    OCT/TCT Number
                   </label>
                   <div className="relative">
                     <input
@@ -502,13 +561,31 @@ export const Dashboard: React.FC = () => {
               </p>
 
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {([
-                  { key: "under_review", label: "Under Review", color: "bg-orange-500" },
-                  { key: "pending", label: "Pending (Admin)", color: "bg-amber-500" },
-                  { key: "verified", label: "Verified", color: "bg-emerald-500" },
-                  { key: "awarded", label: "Awarded", color: "bg-blue-500" },
-                  { key: "disputed", label: "Disputed", color: "bg-rose-500" },
-                ] as const).map((item) => {
+                {(
+                  [
+                    {
+                      key: "under_review",
+                      label: "Under Review",
+                      color: "bg-orange-500",
+                    },
+                    {
+                      key: "forwarded_to_surveyor",
+                      label: "Surveyor Stage",
+                      color: "bg-amber-500",
+                    },
+                    {
+                      key: "verified",
+                      label: "Verified",
+                      color: "bg-emerald-500",
+                    },
+                    { key: "awarded", label: "Awarded", color: "bg-blue-500" },
+                    {
+                      key: "disputed",
+                      label: "Disputed",
+                      color: "bg-rose-500",
+                    },
+                  ] as const
+                ).map((item) => {
                   const count = applications.filter(
                     (a) => a.status === item.key,
                   ).length;
@@ -518,7 +595,9 @@ export const Dashboard: React.FC = () => {
                       className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-center"
                     >
                       <div className="flex items-center justify-center space-x-1.5 mb-2">
-                        <div className={`h-2 w-2 rounded-full ${item.color}`}></div>
+                        <div
+                          className={`h-2 w-2 rounded-full ${item.color}`}
+                        ></div>
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                           {item.label}
                         </span>
@@ -679,27 +758,36 @@ export const Dashboard: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="font-bold text-slate-900">Registry Profile</h3>
-                <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedApp.id}</p>
+                <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                  {selectedApp.id}
+                </p>
               </div>
-              <button 
+              <button
                 onClick={() => setSelectedApp(null)}
                 className="text-slate-400 hover:bg-slate-200 hover:text-slate-700 px-3 py-1 rounded text-xs font-bold transition-colors"
               >
                 Close
               </button>
             </div>
-            
+
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-xl font-extrabold text-slate-900">{selectedApp.userName}</h2>
+                  <h2 className="text-xl font-extrabold text-slate-900">
+                    {selectedApp.userName}
+                  </h2>
                   <p className="text-sm text-slate-500 flex items-center mt-1">
-                    <MapPin size={14} className="mr-1"/>
+                    <MapPin size={14} className="mr-1" />
                     {selectedApp.userBarangay}
-                    {(selectedApp.userMunicipality || selectedApp.userProvince) && (
+                    {(selectedApp.userMunicipality ||
+                      selectedApp.userProvince) && (
                       <span className="ml-1 text-slate-400">
-                        — {selectedApp.userMunicipality && `${selectedApp.userMunicipality}`}
-                        {selectedApp.userMunicipality && selectedApp.userProvince && ", "}
+                        —{" "}
+                        {selectedApp.userMunicipality &&
+                          `${selectedApp.userMunicipality}`}
+                        {selectedApp.userMunicipality &&
+                          selectedApp.userProvince &&
+                          ", "}
                         {selectedApp.userProvince}
                       </span>
                     )}
@@ -711,35 +799,52 @@ export const Dashboard: React.FC = () => {
               {selectedTitle ? (
                 <div className="space-y-4">
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                    <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-3">CLOA Title Details</h4>
+                    <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-3">
+                      CLOA Title Details
+                    </h4>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Title Number</span>
-                        <span className="font-mono font-bold text-slate-900">{selectedTitle.titleNumber}</span>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">
+                          Title Number
+                        </span>
+                        <span className="font-mono font-bold text-slate-900">
+                          {selectedTitle.titleNumber}
+                        </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Lot Number</span>
-                        <span className="font-bold text-slate-900">{selectedTitle.lotNumber}</span>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">
+                          Lot Number
+                        </span>
+                        <span className="font-bold text-slate-900">
+                          {selectedTitle.lotNumber}
+                        </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Land Area</span>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">
+                          Land Area
+                        </span>
                         <span className="font-bold text-slate-900 flex items-center">
-                          <Layers size={14} className="text-emerald-700 mr-1"/>
+                          <Layers size={14} className="text-emerald-700 mr-1" />
                           {selectedTitle.areaHectares} Hectares
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Municipality</span>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">
+                          Municipality
+                        </span>
                         <span className="font-bold text-slate-900 flex items-center">
-                          <MapPin size={14} className="text-emerald-700 mr-1"/>
+                          <MapPin size={14} className="text-emerald-700 mr-1" />
                           {selectedTitle.municipality}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Province</span>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">
+                          Province
+                        </span>
                         <span className="font-bold text-slate-900 flex items-center">
-                          <MapPin size={14} className="text-emerald-700 mr-1"/>
-                          {(selectedTitle as any).province || "Negros Occidental"}
+                          <MapPin size={14} className="text-emerald-700 mr-1" />
+                          {(selectedTitle as any).province ||
+                            "Negros Occidental"}
                         </span>
                       </div>
                     </div>
@@ -747,7 +852,9 @@ export const Dashboard: React.FC = () => {
 
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs">
                     <div className="flex justify-between items-center text-slate-700">
-                      <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400">GPS Coordinates</span>
+                      <span className="font-bold uppercase tracking-wider text-[10px] text-slate-400">
+                        GPS Coordinates
+                      </span>
                       <span className="font-mono bg-white border border-slate-200 px-2 py-1 rounded shadow-sm">
                         {selectedTitle.geoLat}, {selectedTitle.geoLng}
                       </span>
@@ -758,13 +865,18 @@ export const Dashboard: React.FC = () => {
                 <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-6 text-center text-sm">
                   <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
                   <p className="font-semibold">No Land Title Encoded Yet</p>
-                  <p className="text-xs mt-1 opacity-80">This application is currently in the {selectedApp.status.replace("_", " ")} stage. A surveyor must verify and encode the title boundaries to generate a CLOA record.</p>
+                  <p className="text-xs mt-1 opacity-80">
+                    This application is currently in the{" "}
+                    {selectedApp.status.replace("_", " ")} stage. A surveyor
+                    must verify and encode the title boundaries to generate a
+                    CLOA record.
+                  </p>
                 </div>
               )}
             </div>
-            
+
             <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-end">
-              <button 
+              <button
                 onClick={() => setSelectedApp(null)}
                 className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg text-xs font-bold transition-colors"
               >

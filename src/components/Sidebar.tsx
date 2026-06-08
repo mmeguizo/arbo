@@ -7,12 +7,12 @@ import {
   MapPin,
   Search,
   Settings,
-  HelpCircle,
   LogOut,
   ChevronRight,
   Menu,
   X,
   TrendingUp,
+  ClipboardList,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -39,8 +39,7 @@ export const Sidebar: React.FC = () => {
     if (role === "arb") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "My Application", path: "/my-application", icon: FileText },
-        { label: "Help", path: "/help", icon: HelpCircle },
+        { label: "My CLOA Record", path: "/my-application", icon: FileText },
       ];
     }
 
@@ -49,7 +48,7 @@ export const Sidebar: React.FC = () => {
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "Review Applications", path: "/review-apps", icon: FileText },
         { label: "Search Registry", path: "/search", icon: Search },
-        { label: "Help", path: "/help", icon: HelpCircle },
+        { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
       ];
     }
 
@@ -58,22 +57,19 @@ export const Sidebar: React.FC = () => {
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "Encode Title Info", path: "/land-titles", icon: MapPin },
         { label: "Search Registry", path: "/search", icon: Search },
-        { label: "Help", path: "/help", icon: HelpCircle },
+        { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
       ];
     }
 
     if (role === "admin") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        {
-          label: "Review (Staff Stage)",
-          path: "/review-apps",
-          icon: FileText,
-        },
+        { label: "Review (Staff Stage)", path: "/review-apps", icon: FileText },
         { label: "Surveyor Stage", path: "/land-titles", icon: MapPin },
         { label: "Search Registry", path: "/search", icon: Search },
+        { label: "Analytics & Reports", path: "/reports", icon: TrendingUp },
         { label: "System Users", path: "/accounts", icon: Settings },
-        { label: "Help", path: "/help", icon: HelpCircle },
+        { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
       ];
     }
 
@@ -87,12 +83,12 @@ export const Sidebar: React.FC = () => {
     <>
       {/* Mobile Top Header */}
       <div className="flex items-center justify-between border-b border-slate-200 bg-emerald-900 px-4 py-3 text-white md:hidden">
-          <div className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center text-emerald-900 font-bold text-xs p-1">
-              <span className="text-stone-900">DAR</span>
-            </div>
-            <span className="font-bold tracking-wider">DAR Portal</span>
+        <div className="flex items-center space-x-2">
+          <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center text-emerald-900 font-bold text-xs p-1">
+            <span className="text-stone-900">DAR</span>
           </div>
+          <span className="font-bold tracking-wider">DAR Portal</span>
+        </div>
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="text-white focus:outline-none"

@@ -1,6 +1,7 @@
 # ARBO Mobile Support Web App — Project Context
-> **For the next AI agent**: Read this entire file before making any suggestions or changes.
-> Last updated: June 2, 2026
+
+> **For the next AI agent**: Read this file AND `SESSION_HANDOVER.md` before making any changes.
+> Last updated: June 8, 2026 — See `SESSION_HANDOVER.md` for the complete handover including workflow changes, known issues, and everything built so far.
 
 ---
 
@@ -16,22 +17,24 @@ The primary use case is digitizing the CLOA (Certificate of Land Ownership Award
 
 ## 2. Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend Framework | React 18 + Vite |
-| Language | TypeScript 5.5+ (strict mode) |
-| Styling | Tailwind CSS v4 + PostCSS |
-| Routing | React Router DOM v7 |
-| Backend / Auth | Firebase v12 (Web SDK) |
-| Database | Firebase Cloud Firestore (NoSQL) |
-| File Storage | Firebase Storage (Base64 encoded inline in Firestore for documents) |
-| Icons | Lucide React |
-| Build Tool | Vite v8 |
+| Layer              | Technology                                                          |
+| ------------------ | ------------------------------------------------------------------- |
+| Frontend Framework | React 18 + Vite                                                     |
+| Language           | TypeScript 5.5+ (strict mode)                                       |
+| Styling            | Tailwind CSS v4 + PostCSS                                           |
+| Routing            | React Router DOM v7                                                 |
+| Backend / Auth     | Firebase v12 (Web SDK)                                              |
+| Database           | Firebase Cloud Firestore (NoSQL)                                    |
+| File Storage       | Firebase Storage (Base64 encoded inline in Firestore for documents) |
+| Icons              | Lucide React                                                        |
+| Build Tool         | Vite v8                                                             |
 
 ### Important Tailwind v4 Note
+
 Tailwind CSS v4 changed its PostCSS integration. The project uses `@tailwindcss/postcss` (NOT the old `tailwindcss` PostCSS plugin).
 
 **postcss.config.js** must use:
+
 ```js
 export default {
   plugins: {
@@ -42,6 +45,7 @@ export default {
 ```
 
 Custom brand colors are defined in `tailwind.config.js`:
+
 - `dar-green` — primary DAR brand green
 - `dar-light-green` — lighter variant
 - `dar-gold` — accent gold
@@ -56,6 +60,7 @@ Custom brand colors are defined in `tailwind.config.js`:
 - **Config file**: `src/firebase/config.ts`
 
 ### Firebase Services Used
+
 - **Firebase Authentication** — Email/Password only
 - **Cloud Firestore** — Primary database
 - **Firebase Storage** — Available but documents are stored as Base64 strings inside Firestore to avoid extra Storage setup
@@ -69,7 +74,9 @@ Custom brand colors are defined in `tailwind.config.js`:
 ### Collections (auto-created on first write):
 
 #### `/users/{uid}`
+
 Stores user profiles for all roles.
+
 ```json
 {
   "uid": "string",
@@ -85,7 +92,9 @@ Stores user profiles for all roles.
 ```
 
 #### `/applications/{uid}`
+
 One application per ARB farmer. Linked by their Auth UID.
+
 ```json
 {
   "userId": "string",
@@ -109,7 +118,9 @@ One application per ARB farmer. Linked by their Auth UID.
 ```
 
 #### `/landTitles/{titleId}`
+
 Surveyor-encoded land boundary records.
+
 ```json
 {
   "titleNumber": "string (e.g. TCT-456789)",
@@ -129,12 +140,12 @@ Surveyor-encoded land boundary records.
 
 ## 5. User Roles & Access Control
 
-| Role | Who | Access |
-|---|---|---|
-| `arb` | Farmer / Beneficiary | My Application page only |
-| `staff` | DAR Municipal Staff | Dashboard, Review Applications |
-| `surveyor` | DAR Surveyor | Dashboard, Land Titles |
-| `admin` | District Administrator | All pages including Admin Users |
+| Role       | Who                    | Access                          |
+| ---------- | ---------------------- | ------------------------------- |
+| `arb`      | Farmer / Beneficiary   | My Application page only        |
+| `staff`    | DAR Municipal Staff    | Dashboard, Review Applications  |
+| `surveyor` | DAR Surveyor           | Dashboard, Land Titles          |
+| `admin`    | District Administrator | All pages including Admin Users |
 
 Routes are protected by `ProtectedRoute.tsx` which reads the user's role from Firestore after login.
 
@@ -171,6 +182,7 @@ src/
 ## 7. Key Architecture Decisions
 
 ### A. Secondary Firebase App for Admin User Creation
+
 When an Admin creates a new Staff/Surveyor account, calling `createUserWithEmailAndPassword` on the default Firebase instance would log out the Admin. Solution: create a temporary secondary `FirebaseApp` instance in memory, register the new user through it, then call `deleteApp()` to destroy it.
 
 ```typescript
@@ -182,19 +194,25 @@ await deleteApp(secondaryApp);
 ```
 
 ### B. No Microfinance / Profitability Module
+
 The "Profitability Tracking" dashboard was removed from active scope. It appears as a greyed-out "Coming Soon" link in the Sidebar to signal future scope to the client.
 
 ### C. Base64 Document Storage
+
 ARB farmers upload 4 documents (Cedula, Birth Cert, Barangay Cert, Photo). These are converted to Base64 strings and stored directly inside the Firestore application document. This avoids needing Firebase Storage rules and simplifies setup.
 
 ### D. Real-time Live Stats
+
 Dashboard stats now reflect live Firestore counts for total farmers, land titles, and total hectarage. No dummy or mock data is injected. The registry table supports column sorting out of the box.
 
-### E. CLOA Approval Pipeline (4-Stage)
-1. **Under Review** (Staff Stage): ARB registers and uploads documents.
-2. **Pending** (Admin Stage): Staff verifies documents and forwards to Admin.
-3. **Verified**: Admin approves the application.
-4. **Awarded**: Surveyor encodes the land title coordinates, generating the final CLOA.
+### E. CLOA Approval Pipeline (4-Stage — Updated June 8)
+
+1. **Under Review** (Staff Stage): ARB registers and uploads documents. Staff may dispute with remarks.
+2. **Forwarded to Surveyor** (Surveyor Stage): Staff verifies docs, forwards to surveyor to encode land boundaries.
+3. **Verified** (Admin Stage): Surveyor encodes land title, admin verifies and awards.
+4. **Awarded**: Final state. CLOA title visible to ARB in My Application.
+
+> ⚠️ **Note**: The old `pending` status has been replaced with `forwarded_to_surveyor`. Applications stuck on `pending` in Firestore won't appear in the new tabs.
 
 ---
 
