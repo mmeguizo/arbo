@@ -657,13 +657,19 @@ export const MyApplication: React.FC = () => {
                             {new Date(t.encodedAt).toLocaleDateString()}
                           </td>
                           <td className="py-3 text-center">
-                            <button
-                              onClick={() => setCertificateTitle(t)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2.5 py-1.5 text-[10px] font-bold transition-colors cursor-pointer"
-                            >
-                              <Eye size={12} />
-                              <span>View</span>
-                            </button>
+                            {app?.status === "awarded" ? (
+                              <button
+                                onClick={() => setCertificateTitle(t)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2.5 py-1.5 text-[10px] font-bold transition-colors cursor-pointer"
+                              >
+                                <Eye size={12} />
+                                <span>CLOA</span>
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">
+                                Pending Admin Approval
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -706,13 +712,19 @@ export const MyApplication: React.FC = () => {
                       <p className="text-[10px] text-slate-400">
                         Awarded: {new Date(t.encodedAt).toLocaleDateString()}
                       </p>
-                      <button
-                        onClick={() => setCertificateTitle(t)}
-                        className="w-full mt-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2.5 py-1.5 text-[10px] font-bold transition-colors cursor-pointer"
-                      >
-                        <Eye size={12} />
-                        <span>View CLOA Certificate</span>
-                      </button>
+                      {app?.status === "awarded" ? (
+                        <button
+                          onClick={() => setCertificateTitle(t)}
+                          className="w-full mt-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2.5 py-1.5 text-[10px] font-bold transition-colors cursor-pointer"
+                        >
+                          <Eye size={12} />
+                          <span>View CLOA Certificate</span>
+                        </button>
+                      ) : (
+                        <p className="w-full mt-1 text-[10px] text-slate-400 italic text-center">
+                          Pending Admin Approval
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
