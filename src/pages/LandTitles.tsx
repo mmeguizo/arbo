@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { broadcastNotification } from "../contexts/NotificationContext";
 import { Sidebar } from "../components/Sidebar";
+import { uploadFile, getLandPhotoPath } from "../utils/storage";
 import {
   collection,
   getDocs,
@@ -23,12 +25,12 @@ import {
   Compass,
   FileCheck,
   Globe,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
   Camera,
   Upload,
   ExternalLink,
   RotateCcw,
+  Search,
 } from "lucide-react";
 import {
   MapContainer,
@@ -78,6 +80,122 @@ const MapCenterUpdater: React.FC<{
   return null;
 };
 
+// Searchable beneficiary dropdown — replaces the old <select> for better UX with many applicants
+const SearchableBeneficiarySelect: React.FC<{
+  applicants: ApprovedApplicant[];
+  selectedAppId: string;
+  onSelect: (id: string) => void;
+  totalCount: number;
+}> = ({ applicants, selectedAppId, onSelect, totalCount }) => {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = applicants.filter((a) => {
+    const q = search.toLowerCase();
+    return (
+      a.userName.toLowerCase().includes(q) ||
+      a.userBarangay.toLowerCase().includes(q) ||
+      a.id.toLowerCase().includes(q) ||
+      (a.userProvince || "").toLowerCase().includes(q)
+    );
+  });
+
+  const selected = applicants.find((a) => a.id === selectedAppId);
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+          <Search size={16} />
+        </div>
+        <input
+          type="text"
+          value={
+            open
+              ? search
+              : selected
+                ? `${selected.userName} (${selected.userBarangay}) - ID: ${selected.id}`
+                : ""
+          }
+          onChange={(e) => {
+            setSearch(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search beneficiary name, barangay, or ID..."
+          className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+        />
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+        >
+          <ChevronDown size={16} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-slate-400 italic">
+              No beneficiaries match your search.
+            </div>
+          ) : (
+            filtered.map((appItem) => {
+              const appProvince = appItem.userProvince || "Negros Occidental";
+              const isSelected = appItem.id === selectedAppId;
+              return (
+                <button
+                  key={appItem.id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(appItem.id);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  className={`w-full text-left px-4 py-3 text-xs transition-colors border-b border-slate-50 last:border-0 cursor-pointer ${
+                    isSelected
+                      ? "bg-emerald-50 text-emerald-900 font-bold"
+                      : "hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <span className="font-semibold">{appItem.userName}</span>
+                  <span className="text-slate-400 ml-1">
+                    ({appItem.userBarangay}, {appProvince})
+                  </span>
+                  <span className="text-[9px] text-slate-400 ml-2 font-mono">
+                    ID: {appItem.id}
+                  </span>
+                </button>
+              );
+            })
+          )}
+          {totalCount > filtered.length && (
+            <div className="px-4 py-2 text-[9px] text-slate-400 bg-slate-50 border-t border-slate-100 text-center">
+              {filtered.length} of {totalCount} shown
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const LandTitles: React.FC = () => {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -86,10 +204,7 @@ export const LandTitles: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [submittedTitle, setSubmittedTitle] = useState("");
 
-  // Pagination
   const [allApplicants, setAllApplicants] = useState<ApprovedApplicant[]>([]);
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
 
   // Form Fields
@@ -107,7 +222,6 @@ export const LandTitles: React.FC = () => {
     10.2831, 122.9912,
   ]); // Negros default
   const [mapZoom, setMapZoom] = useState(10);
-  const [landPhotos, setLandPhotos] = useState<string[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
 
   const [errorVisible, setError] = useState<string | null>(null);
@@ -140,29 +254,35 @@ export const LandTitles: React.FC = () => {
     }
   }, [geoLat, geoLng]);
 
-  // Photo upload handler
+  // Photo preview state (blob URLs for immediate preview) + pending files for upload
+  const [pendingPhotoFiles, setPendingPhotoFiles] = useState<File[]>([]);
+
+  // Photo upload handler — previews locally, uploads to Storage on submit
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (file.size > 5 * 1024 * 1024) {
-        setError(`Photo ${file.name} exceeds 5MB limit.`);
+      if (file.size > 10 * 1024 * 1024) {
+        setError(`Photo ${file.name} exceeds 10MB limit.`);
         continue;
       }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        setLandPhotos((prev) => [...prev, base64]);
-        setPhotoPreviews((prev) => [...prev, base64]);
-      };
-      reader.readAsDataURL(file);
+      // Show local preview immediately
+      const previewUrl = URL.createObjectURL(file);
+      setPhotoPreviews((prev) => [...prev, previewUrl]);
+      // Store File for upload on submit
+      setPendingPhotoFiles((prev) => [...prev, file]);
     }
     e.target.value = "";
   };
 
   const removePhoto = (idx: number) => {
-    setLandPhotos((prev) => prev.filter((_, i) => i !== idx));
+    setPendingPhotoFiles((prev) => prev.filter((_, i) => i !== idx));
+    // Revoke blob URL to free memory
+    const previewUrl = photoPreviews[idx];
+    if (previewUrl && previewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(previewUrl);
+    }
     setPhotoPreviews((prev) => prev.filter((_, i) => i !== idx));
   };
 
@@ -211,9 +331,7 @@ export const LandTitles: React.FC = () => {
 
       setAllApplicants(list);
       setTotalCount(list.length);
-      setPage(0);
       setApprovedApplicants(list.slice(0, PAGE_SIZE));
-      setHasMore(list.length > PAGE_SIZE);
       if (list.length > 0) {
         setSelectedAppId(list[0].id);
       }
@@ -233,26 +351,6 @@ export const LandTitles: React.FC = () => {
   useEffect(() => {
     fetchApprovedApplicants();
   }, []);
-
-  const handlePrevPage = () => {
-    if (page <= 0) return;
-    const newPage = page - 1;
-    setPage(newPage);
-    setApprovedApplicants(
-      allApplicants.slice(newPage * PAGE_SIZE, (newPage + 1) * PAGE_SIZE),
-    );
-    setHasMore(true);
-  };
-
-  const handleNextPage = () => {
-    const newPage = page + 1;
-    if (newPage * PAGE_SIZE >= allApplicants.length) return;
-    setPage(newPage);
-    setApprovedApplicants(
-      allApplicants.slice(newPage * PAGE_SIZE, (newPage + 1) * PAGE_SIZE),
-    );
-    setHasMore((newPage + 1) * PAGE_SIZE < allApplicants.length);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,13 +376,12 @@ export const LandTitles: React.FC = () => {
     try {
       setLoading(true);
 
-      const duplicateQuery = query(
-        collection(db, "landTitles"),
-        where("titleNumber", "==", cleanTitle),
+      // Client-side duplicate check — fetch all titles once instead of a composite-indexed query
+      const allTitlesSnap = await getDocs(collection(db, "landTitles"));
+      const isDuplicate = allTitlesSnap.docs.some(
+        (d) => d.data().titleNumber?.toUpperCase() === cleanTitle,
       );
-      const dupSnap = await getDocs(duplicateQuery);
-
-      if (!dupSnap.empty) {
+      if (isDuplicate) {
         setError(
           `CRITICAL WARNING: The Land Title ID: '${cleanTitle}' is already registered in our database! Double registration is blocked to prevent professional squatters.`,
         );
@@ -303,6 +400,20 @@ export const LandTitles: React.FC = () => {
 
       const generatedTitleId = `TTL-${Math.floor(100000 + Math.random() * 900000)}`;
 
+      // Upload land photos to Firebase Storage
+      const photoUrls: string[] = [];
+      for (let i = 0; i < pendingPhotoFiles.length; i++) {
+        const photoFile = pendingPhotoFiles[i];
+        try {
+          const photoPath = getLandPhotoPath(generatedTitleId, i);
+          const photoUrl = await uploadFile(photoFile, photoPath);
+          photoUrls.push(photoUrl);
+        } catch (uploadErr) {
+          console.error(`Failed to upload photo ${i}:`, uploadErr);
+          // Non-fatal — continue without this photo
+        }
+      }
+
       await setDoc(doc(db, "landTitles", generatedTitleId), {
         titleId: generatedTitleId,
         applicationId: selectedAppRecord.id,
@@ -317,7 +428,7 @@ export const LandTitles: React.FC = () => {
         geoLng: geoLng.trim(),
         surveyorId: profile?.name || "Surveyor Officer",
         encodedAt: new Date().toISOString(),
-        landPhotos: landPhotos, // base64 photo array
+        landPhotos: photoUrls,
       });
 
       const appDocRef = doc(db, "applications", selectedAppRecord.id);
@@ -340,19 +451,46 @@ export const LandTitles: React.FC = () => {
         notes: `Land title ${cleanTitle} encoded — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
       });
 
+      // 🔔 Notify admin that surveyor has encoded a land title
+      await broadcastNotification(
+        "admin",
+        "encoded",
+        "Land Title Encoded — Ready for Admin Approval",
+        `Surveyor ${profile?.name} encoded title ${cleanTitle} for ${selectedAppRecord.userName} (${selectedAppRecord.id}).`,
+      );
+
       setSubmitted(true);
       setSubmittedTitle(cleanTitle);
 
       await fetchApprovedApplicants();
     } catch (err) {
       console.error("Failed to save land title mapping:", err);
-      setError("An unexpected database error occurred. Please try again.");
+      const firebaseErr = err as { code?: string; message?: string };
+      // Show the actual Firestore error code for easier debugging
+      if (firebaseErr.code === "permission-denied") {
+        setError(
+          "Permission denied. Your account may not have write access. Contact your admin.",
+        );
+      } else if (
+        firebaseErr.code?.includes("unavailable") ||
+        firebaseErr.code?.includes("deadline-exceeded")
+      ) {
+        setError(
+          "Database is temporarily unavailable. Please check your connection and try again.",
+        );
+      } else if (firebaseErr.code === "not-found") {
+        setError(
+          "The database collection could not be found. Make sure Firestore is enabled in the Firebase Console.",
+        );
+      } else {
+        setError(
+          `Failed to save: ${firebaseErr.message || "Unexpected error. Please try again."}`,
+        );
+      }
     } finally {
       setLoading(false);
     }
   };
-
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -408,7 +546,9 @@ export const LandTitles: React.FC = () => {
                       setGeoLng("");
                       setProvince("");
                       setMunicipality("");
-                      setLandPhotos([]);
+                      setPendingPhotoFiles([]);
+                      setPhotoPreviews([]);
+                      setPendingPhotoFiles([]);
                       setPhotoPreviews([]);
                     }}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-900 text-white py-2 px-4 text-xs font-bold transition-all cursor-pointer"
@@ -450,54 +590,18 @@ export const LandTitles: React.FC = () => {
               </div>
             ) : submitted ? null : (
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
                     Select Approved Beneficiary
                   </label>
-                  <select
-                    value={selectedAppId}
-                    onChange={(e) => setSelectedAppId(e.target.value)}
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
-                  >
-                    {applicants.map((appItem) => {
-                      const appProvince =
-                        appItem.userProvince || "Negros Occidental";
-                      return (
-                        <option key={appItem.id} value={appItem.id}>
-                          {appItem.userName} ({appItem.userBarangay},{" "}
-                          {appProvince}) - ID: {appItem.id}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  {totalCount > PAGE_SIZE && (
-                    <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
-                      <span>
-                        Showing {applicants.length} of {totalCount} applicants
-                      </span>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={handlePrevPage}
-                          disabled={page === 0}
-                          className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                        >
-                          <ChevronLeft size={14} />
-                        </button>
-                        <span className="font-semibold">
-                          Page {page + 1} of {totalPages}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleNextPage}
-                          disabled={!hasMore}
-                          className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
-                        >
-                          <ChevronRight size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <SearchableBeneficiarySelect
+                    applicants={
+                      allApplicants.length > 0 ? allApplicants : applicants
+                    }
+                    selectedAppId={selectedAppId}
+                    onSelect={setSelectedAppId}
+                    totalCount={totalCount}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

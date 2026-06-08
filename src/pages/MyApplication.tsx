@@ -15,6 +15,7 @@ import {
 import { db } from "../firebase/config";
 import { TitleMap } from "../components/TitleMap";
 import { formatDate } from "../utils/formatters";
+import { uploadFile, getDocumentPath, deleteFile } from "../utils/storage";
 import {
   FileText,
   CreditCard,
@@ -100,24 +101,30 @@ export const MyApplication: React.FC = () => {
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
-    if (!file || !app) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setDocError(`File is too large (max 5MB). Please choose a smaller file.`);
+    if (!file || !app || !user) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setDocError(
+        `File is too large (max 10MB). Please choose a smaller file.`,
+      );
       e.target.value = "";
       return;
     }
     setDocError(null);
     setUpdatingDoc(type);
-    const reader = new FileReader();
-    reader.onloadend = async () => {
+
+    (async () => {
       try {
-        const base64 = reader.result as string;
+        // 1. Upload file to Firebase Storage
+        const storagePath = getDocumentPath(user.uid, type, file);
+        const downloadUrl = await uploadFile(file, storagePath);
+
         const newStatus = revertedStatus();
         const appRef = doc(db, "applications", app.applicationId);
         await updateDoc(appRef, {
-          [`documents.${type}`]: base64,
+          [`documents.${type}`]: downloadUrl,
           status: newStatus,
         });
+
         // Audit log for document upload
         await addDoc(collection(db, "auditLogs"), {
           applicationId: app.applicationId,
@@ -129,23 +136,42 @@ export const MyApplication: React.FC = () => {
           newStatus,
           notes: `Updated document: ${type}`,
         });
-        // Listener will auto-update the UI
+
+        // Optimistic local update so UI updates immediately
+        setApps((prev) =>
+          prev.map((a) =>
+            a.applicationId === app.applicationId
+              ? {
+                  ...a,
+                  documents: { ...a.documents, [type]: downloadUrl },
+                  status: newStatus,
+                }
+              : a,
+          ),
+        );
       } catch (err) {
         console.error("Failed to replace document:", err);
-        setDocError("Failed to update document. Please try again.");
+        setDocError("Failed to upload document. Please try again.");
       } finally {
         setUpdatingDoc(null);
         e.target.value = "";
       }
-    };
-    reader.readAsDataURL(file);
+    })();
   };
 
   const handleDeleteDocument = async (type: DocField) => {
-    if (!app) return;
+    if (!app || !user) return;
     setConfirmDelete(null);
     setUpdatingDoc(type);
     try {
+      // Delete from Storage if URL exists
+      const existingUrl = app.documents[type];
+      if (existingUrl) {
+        await deleteFile(existingUrl).catch((e) =>
+          console.warn("Could not delete storage file:", e),
+        );
+      }
+
       const newStatus = revertedStatus();
       const appRef = doc(db, "applications", app.applicationId);
       await updateDoc(appRef, {
@@ -163,7 +189,18 @@ export const MyApplication: React.FC = () => {
         newStatus,
         notes: `Removed document: ${type}`,
       });
-      // Listener will auto-update the UI
+      // Optimistic local update so UI updates immediately
+      setApps((prev) =>
+        prev.map((a) =>
+          a.applicationId === app.applicationId
+            ? {
+                ...a,
+                documents: { ...a.documents, [type]: null },
+                status: newStatus,
+              }
+            : a,
+        ),
+      );
     } catch (err) {
       console.error("Failed to delete document:", err);
       setDocError("Failed to remove document. Please try again.");
@@ -225,7 +262,7 @@ export const MyApplication: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between z-10 shrink-0">
           <div className="text-left animate-fade-in">
@@ -302,7 +339,7 @@ export const MyApplication: React.FC = () => {
             </div>
           </div>
         ) : (
-          <main className="flex-1 p-8 space-y-8 max-w-5xl">
+          <main className="p-8 space-y-8 max-w-5xl">
             {/* Top overview widget */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Profile card summary */}
@@ -439,6 +476,9 @@ export const MyApplication: React.FC = () => {
                               await updateDoc(appRef, {
                                 arbResponse: arbResponse.trim(),
                                 status: "under_review",
+                                // Clear old evaluator remarks so they don't confuse the next evaluator
+                                staffNotes: "",
+                                adminNotes: "",
                               });
                               await addDoc(collection(db, "auditLogs"), {
                                 applicationId: app.applicationId,

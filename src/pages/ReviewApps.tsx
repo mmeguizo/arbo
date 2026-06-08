@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useNotifications } from "../contexts/NotificationContext";
 import { Sidebar } from "../components/Sidebar";
 import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
 import {
@@ -25,6 +26,8 @@ import {
   Clock,
   ShieldAlert,
   RotateCcw,
+  ArrowLeft,
+  AlertCircle,
 } from "lucide-react";
 
 interface Application {
@@ -49,6 +52,11 @@ interface Application {
     brgyCert: string | null;
     picture: string | null;
   };
+  // Internal correction fields (invisible to ARB)
+  internalStatus?: string;
+  internalNotes?: string;
+  internalAssignedTo?: string | null;
+  internalAssignedRole?: string | null;
 }
 
 interface AuditLog {
@@ -70,14 +78,18 @@ type TabKey =
 
 export const ReviewApps: React.FC = () => {
   const { profile } = useAuth();
+  const { writeNotification } = useNotifications();
   const [apps, setApps] = useState<Application[]>([]);
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
   const [notesInput, setNotesInput] = useState("");
+  const [internalNotesInput, setInternalNotesInput] = useState("");
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [showOverride, setShowOverride] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmRevert, setConfirmRevert] = useState(false);
+  const [showReturnSurveyor, setShowReturnSurveyor] = useState(false);
+  const [showReturnStaff, setShowReturnStaff] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabKey>("under_review");
 
@@ -153,6 +165,10 @@ export const ReviewApps: React.FC = () => {
 
   // Auto-select first app on tab change
   useEffect(() => {
+    // Clear remarks whenever tab changes to prevent state bleed
+    setNotesInput("");
+    setInternalNotesInput("");
+
     if (selectedApp) {
       const updated = apps.find((a) => a.id === selectedApp.id);
       if (updated && updated.status !== selectedApp.status) {
@@ -195,13 +211,22 @@ export const ReviewApps: React.FC = () => {
 
       // Separate notes by role
       if (profile.role === "staff") {
-        payload.staffNotes = notesInput.trim();
+        // If forwarding, clear staff notes so surveyor/admin don't see old remarks
+        if (newStatus === "forwarded_to_surveyor") {
+          payload.staffNotes = "";
+        } else {
+          payload.staffNotes = notesInput.trim();
+        }
         payload.reviewedByStaff = profile.name;
         payload.staffReviewedAt = new Date().toISOString();
       } else if (profile.role === "admin") {
         payload.adminNotes = notesInput.trim();
         payload.approvedByAdmin = profile.name;
         payload.adminApprovedAt = new Date().toISOString();
+        // Clear admin notes when awarding so they're not stale on next cycle
+        if (newStatus === "awarded") {
+          payload.adminNotes = "";
+        }
       }
 
       await updateDoc(docRef, payload);
@@ -229,8 +254,126 @@ export const ReviewApps: React.FC = () => {
         newStatus,
         notesInput,
       );
+
+      // 🔔 NOTIFICATIONS
+      if (profile.role === "staff" && newStatus === "forwarded_to_surveyor") {
+        // Notify all surveyors
+        await writeNotification(
+          "surveyor",
+          "forwarded",
+          "New Land for Surveyor Encoding",
+          `Staff ${profile.name} forwarded ${selectedApp.userName}'s application (${selectedApp.id}) for land title encoding.`,
+          selectedApp.id,
+        );
+      } else if (profile.role === "admin" && newStatus === "awarded") {
+        // Notify the ARB specifically
+        await writeNotification(
+          "arb",
+          "awarded",
+          "CLOA Title Awarded!",
+          `Congratulations! Your application ${selectedApp.id} has been approved and your land title has been officially awarded.`,
+          selectedApp.id,
+          selectedApp.userId,
+        );
+      } else if (newStatus === "disputed") {
+        // Notify ARB
+        await writeNotification(
+          "arb",
+          "disputed",
+          "Application Flagged for Review",
+          `Your application ${selectedApp.id} has been flagged. See remarks for details.`,
+          selectedApp.id,
+          selectedApp.userId,
+        );
+      }
     } catch (err) {
       console.error("Failed to commit status change:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Internal correction: admin returns to surveyor or staff (invisible to ARB)
+  const handleReturnForCorrection = async (
+    assignRole: "surveyor" | "staff",
+  ) => {
+    if (!selectedApp || !profile || !internalNotesInput.trim()) {
+      alert("Please provide internal correction notes.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const docRef = doc(db, "applications", selectedApp.id);
+      // Also set status back so it appears in the assigned role's queue
+      const newStatus =
+        assignRole === "surveyor" ? "forwarded_to_surveyor" : "under_review";
+      await updateDoc(docRef, {
+        status: newStatus,
+        internalStatus:
+          assignRole === "surveyor"
+            ? "correction_surveyor"
+            : "correction_staff",
+        internalNotes: internalNotesInput.trim(),
+        internalAssignedTo: null,
+        internalAssignedRole: assignRole,
+      });
+
+      await writeAuditLog(
+        selectedApp.id,
+        "internal_correction",
+        selectedApp.status,
+        selectedApp.status,
+        `Returned to ${assignRole} for correction: ${internalNotesInput.trim()}`,
+      );
+
+      await writeNotification(
+        assignRole,
+        "correction_needed",
+        `Correction Needed — ${selectedApp.userName}`,
+        `Admin ${profile.name} returned application ${selectedApp.id} for correction: ${internalNotesInput.trim()}`,
+        selectedApp.id,
+      );
+
+      setInternalNotesInput("");
+      setShowReturnSurveyor(false);
+      setShowReturnStaff(false);
+    } catch (err) {
+      console.error("Failed to return for correction:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Surveyor/Staff resolves internal correction
+  const handleResolveCorrection = async () => {
+    if (!selectedApp || !profile) return;
+    setLoading(true);
+    try {
+      const docRef = doc(db, "applications", selectedApp.id);
+      await updateDoc(docRef, {
+        internalStatus: "ok",
+        internalNotes: "",
+        internalAssignedTo: null,
+        internalAssignedRole: null,
+      });
+
+      await writeAuditLog(
+        selectedApp.id,
+        "correction_resolved",
+        selectedApp.status,
+        selectedApp.status,
+        `${profile.role} resolved correction`,
+      );
+
+      await writeNotification(
+        "admin",
+        "correction_resolved",
+        `Correction Resolved — ${selectedApp.userName}`,
+        `${profile.role} ${profile.name} resolved the correction for application ${selectedApp.id}. Ready for review.`,
+        selectedApp.id,
+      );
+    } catch (err) {
+      console.error("Failed to resolve correction:", err);
     } finally {
       setLoading(false);
     }
@@ -390,15 +533,34 @@ export const ReviewApps: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-extrabold text-slate-900 truncate max-w-28">
-                        {item.userName}
-                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs font-extrabold text-slate-900 truncate max-w-28">
+                          {item.userName}
+                        </span>
+                        {item.internalStatus &&
+                          (item.internalStatus === "correction_surveyor" ||
+                            item.internalStatus === "correction_staff") && (
+                            <span className="shrink-0 text-[8px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded-full">
+                              !
+                            </span>
+                          )}
+                      </div>
                       <StatusBadge status={item.status} />
                     </div>
                     <p className="text-[10px] text-slate-400">ID: {item.id}</p>
                     <p className="text-[11px] text-slate-500 mt-1 truncate">
                       Brgy: {item.userBarangay}
                     </p>
+                    {item.internalStatus &&
+                      (item.internalStatus === "correction_surveyor" ||
+                        item.internalStatus === "correction_staff") && (
+                        <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1">
+                          <ArrowLeft size={10} />
+                          {item.internalStatus === "correction_surveyor"
+                            ? "Returned to Surveyor"
+                            : "Returned to Staff"}
+                        </p>
+                      )}
                   </div>
                 ))
               )}
@@ -623,6 +785,47 @@ export const ReviewApps: React.FC = () => {
                       </button>
                     )}
 
+                  {/* STAFF/SURVEYOR: internal correction indicator + resolve button */}
+                  {selectedApp.internalStatus &&
+                    (selectedApp.internalStatus === "correction_surveyor" ||
+                      selectedApp.internalStatus === "correction_staff") && (
+                      <div className="w-full bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle
+                            size={16}
+                            className="text-red-600 shrink-0"
+                          />
+                          <span className="text-xs font-bold text-red-700">
+                            Correction Required —{" "}
+                            {selectedApp.internalStatus ===
+                            "correction_surveyor"
+                              ? "Assigned to Surveyor"
+                              : "Assigned to Staff"}
+                          </span>
+                        </div>
+                        {selectedApp.internalNotes && (
+                          <p className="text-[11px] text-red-600 bg-red-100 px-3 py-2 rounded-lg leading-relaxed">
+                            <span className="font-bold">Admin Notes:</span>{" "}
+                            {selectedApp.internalNotes}
+                          </p>
+                        )}
+                        {/* Only show resolve button if the current user's role matches the assigned role */}
+                        {(selectedApp.internalAssignedRole === "surveyor" &&
+                          profile?.role === "surveyor") ||
+                        (selectedApp.internalAssignedRole === "staff" &&
+                          profile?.role === "staff") ? (
+                          <button
+                            onClick={handleResolveCorrection}
+                            disabled={loading}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white py-2 px-4 text-xs font-bold cursor-pointer disabled:opacity-50"
+                          >
+                            <Check size={14} />
+                            <span>Resolve Correction</span>
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+
                   {/* SURVEYOR: forwarded_to_surveyor info */}
                   {(profile?.role === "staff" || profile?.role === "admin") &&
                     selectedApp.status === "forwarded_to_surveyor" && (
@@ -634,7 +837,7 @@ export const ReviewApps: React.FC = () => {
                       </div>
                     )}
 
-                  {/* ADMIN: verified → awarded or dispute */}
+                  {/* ADMIN: verified → awarded, dispute, or internal correction */}
                   {profile?.role === "admin" &&
                     selectedApp.status === "verified" && (
                       <>
@@ -643,7 +846,7 @@ export const ReviewApps: React.FC = () => {
                           className="flex items-center space-x-2 rounded-xl bg-emerald-700 hover:bg-emerald-900 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-lg border-2 border-emerald-400 cursor-pointer"
                         >
                           <CheckCircle2 size={16} className="text-amber-300" />
-                          <span>Approve &amp; Award Title</span>
+                          <span>Approve & Award Title</span>
                         </button>
                         <button
                           onClick={() => {
@@ -659,6 +862,20 @@ export const ReviewApps: React.FC = () => {
                         >
                           <XCircle size={16} />
                           <span>Flag as Disputed</span>
+                        </button>
+                        <button
+                          onClick={() => setShowReturnSurveyor(true)}
+                          className="flex items-center space-x-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 py-3.5 px-5 text-sm font-semibold transition-all cursor-pointer"
+                        >
+                          <ArrowLeft size={16} />
+                          <span>Return to Surveyor</span>
+                        </button>
+                        <button
+                          onClick={() => setShowReturnStaff(true)}
+                          className="flex items-center space-x-2 rounded-xl border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 py-3.5 px-5 text-sm font-semibold transition-all cursor-pointer"
+                        >
+                          <ArrowLeft size={16} />
+                          <span>Return to Staff</span>
                         </button>
                       </>
                     )}
@@ -831,6 +1048,104 @@ export const ReviewApps: React.FC = () => {
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
               >
                 Yes, Revert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return to Surveyor Correction Modal */}
+      {showReturnSurveyor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-left space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <ArrowLeft size={18} className="text-amber-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Return to Surveyor for Correction
+                </h4>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  This will internally flag{" "}
+                  <span className="font-bold">{selectedApp?.userName}</span>'s
+                  application for the surveyor to correct. The applicant will
+                  NOT be notified.
+                </p>
+              </div>
+            </div>
+            <textarea
+              rows={3}
+              placeholder="Describe what needs to be corrected (e.g., 'Location coordinates don't match the municipality')..."
+              value={internalNotesInput}
+              onChange={(e) => setInternalNotesInput(e.target.value)}
+              className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm font-medium focus:border-amber-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+            ></textarea>
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                onClick={() => {
+                  setShowReturnSurveyor(false);
+                  setInternalNotesInput("");
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleReturnForCorrection("surveyor")}
+                disabled={!internalNotesInput.trim() || loading}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white cursor-pointer disabled:opacity-50"
+              >
+                Send to Surveyor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return to Staff Correction Modal */}
+      {showReturnStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-left space-y-4">
+            <div className="flex items-start space-x-3">
+              <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+                <ArrowLeft size={18} className="text-orange-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Return to Staff for Correction
+                </h4>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  This will internally flag{" "}
+                  <span className="font-bold">{selectedApp?.userName}</span>'s
+                  application for the staff to correct. The applicant will NOT
+                  be notified.
+                </p>
+              </div>
+            </div>
+            <textarea
+              rows={3}
+              placeholder="Describe what needs to be corrected (e.g., 'Documents are incomplete')..."
+              value={internalNotesInput}
+              onChange={(e) => setInternalNotesInput(e.target.value)}
+              className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm font-medium focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-orange-500"
+            ></textarea>
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                onClick={() => {
+                  setShowReturnStaff(false);
+                  setInternalNotesInput("");
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleReturnForCorrection("staff")}
+                disabled={!internalNotesInput.trim() || loading}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-orange-600 hover:bg-orange-700 text-white cursor-pointer disabled:opacity-50"
+              >
+                Send to Staff
               </button>
             </div>
           </div>

@@ -80,7 +80,7 @@ export const AuditLogs: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>("timestamp");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  // Admin sees all; staff/surveyor see only their own actions
+  // Admin sees all; staff/surveyor see only their own actions (strict by name)
   const isAdmin = profile?.role === "admin";
 
   useEffect(() => {
@@ -105,12 +105,10 @@ export const AuditLogs: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // Scope: admin sees all, staff/surveyor see their own
+  // Scope: admin sees all, non-admin sees ONLY their own actions (by name)
   const scopedLogs = isAdmin
     ? logs
-    : logs.filter(
-        (l) => l.actor === profile?.name || l.actorRole === profile?.role,
-      );
+    : logs.filter((l) => l.actor === profile?.name);
 
   // Apply all filters
   const filteredLogs = useMemo(() => {
@@ -232,15 +230,20 @@ export const AuditLogs: React.FC = () => {
     );
   };
 
-  // Summary stats
-  const totalThisMonth = logs.filter((l) => isThisMonth(l.timestamp)).length;
-  const totalThisQuarter = logs.filter((l) =>
+  // Summary stats — use scopedLogs so staff/surveyor see their own counts
+  const totalThisMonth = scopedLogs.filter((l) =>
+    isThisMonth(l.timestamp),
+  ).length;
+  const totalThisQuarter = scopedLogs.filter((l) =>
     isThisQuarter(l.timestamp),
   ).length;
-  const actionTypeCounts = logs.reduce<Record<string, number>>((acc, l) => {
-    acc[l.action] = (acc[l.action] || 0) + 1;
-    return acc;
-  }, {});
+  const actionTypeCounts = scopedLogs.reduce<Record<string, number>>(
+    (acc, l) => {
+      acc[l.action] = (acc[l.action] || 0) + 1;
+      return acc;
+    },
+    {},
+  );
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -394,7 +397,7 @@ export const AuditLogs: React.FC = () => {
               {[
                 {
                   label: "Total Actions",
-                  value: logs.length,
+                  value: scopedLogs.length,
                   color: "border-l-slate-500",
                 },
                 {
@@ -406,16 +409,6 @@ export const AuditLogs: React.FC = () => {
                   label: "This Quarter",
                   value: totalThisQuarter,
                   color: "border-l-amber-500",
-                },
-                {
-                  label: "Staff Actions",
-                  value: logs.filter((l) => l.actorRole === "staff").length,
-                  color: "border-l-orange-500",
-                },
-                {
-                  label: "Admin Actions",
-                  value: logs.filter((l) => l.actorRole === "admin").length,
-                  color: "border-l-blue-500",
                 },
               ].map((stat) => (
                 <div
@@ -432,8 +425,8 @@ export const AuditLogs: React.FC = () => {
               ))}
             </div>
 
-            {/* Action type breakdown (admin only) */}
-            {isAdmin && Object.keys(actionTypeCounts).length > 0 && (
+            {/* Action type breakdown */}
+            {Object.keys(actionTypeCounts).length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {Object.entries(actionTypeCounts).map(([action, count]) => (
                   <span

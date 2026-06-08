@@ -56,9 +56,12 @@ export const Login: React.FC = () => {
       navigate("/");
     } catch (err: any) {
       console.error("Login failure: ", err);
-      if (err.code === "auth/user-not-found") {
+      if (
+        err.code === "auth/user-not-found" ||
+        err.code === "auth/invalid-credential"
+      ) {
         setError(
-          "No account found with this email. Please create an account first.",
+          "No account yet, please create one. Go to the registration page to sign up as an ARB beneficiary, or contact your administrator.",
         );
       } else if (
         err.code === "auth/wrong-password" ||
