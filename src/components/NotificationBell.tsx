@@ -48,11 +48,18 @@ export const NotificationBell: React.FC = () => {
   useEffect(() => {
     if (open && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
+      // Position the dropdown above the button if there's not enough space below
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const dropdownHeight = 384; // max-h-80 = 20rem = 320px + padding
+      const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
       setDropdownStyle({
         position: "fixed",
-        top: rect.bottom + 8,
-        right: window.innerWidth - rect.right,
-        zIndex: 9999,
+        ...(openUpward
+          ? { bottom: window.innerHeight - rect.top + 8 }
+          : { top: rect.bottom + 8 }),
+        right: Math.max(8, window.innerWidth - rect.right),
+        zIndex: 99999,
       });
     }
   }, [open]);
@@ -75,8 +82,8 @@ export const NotificationBell: React.FC = () => {
 
       {open &&
         createPortal(
-          <div ref={dropdownRef} style={dropdownStyle}>
-            <div className="w-80 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+          <div ref={dropdownRef} style={dropdownStyle} className="shadow-2xl">
+            <div className="w-80 bg-white rounded-xl border border-slate-200 shadow-2xl overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-700">
                   Notifications

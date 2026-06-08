@@ -31,6 +31,7 @@ import {
   ExternalLink,
   RotateCcw,
   Search,
+  Edit,
 } from "lucide-react";
 import {
   MapContainer,
@@ -54,9 +55,27 @@ interface ApprovedApplicant {
   submittedAt?: string;
 }
 
+interface ExistingTitle {
+  titleId: string;
+  applicationId: string;
+  beneficiaryId: string;
+  beneficiaryName: string;
+  titleNumber: string;
+  lotNumber: string;
+  areaHectares: number;
+  province: string;
+  municipality: string;
+  geoLat: string;
+  geoLng: string;
+  surveyorId: string;
+  encodedAt: string;
+  landPhotos?: string[];
+  internalStatus?: string;
+  internalNotes?: string;
+}
+
 const PAGE_SIZE = 20;
 
-// Leaflet helper: handle map clicks to drop a pin
 const MapClickHandler: React.FC<{
   onPinDrop: (lat: number, lng: number) => void;
 }> = ({ onPinDrop }) => {
@@ -68,7 +87,6 @@ const MapClickHandler: React.FC<{
   return null;
 };
 
-// Leaflet helper: sync map center from state
 const MapCenterUpdater: React.FC<{
   center: [number, number];
   zoom: number;
@@ -80,7 +98,6 @@ const MapCenterUpdater: React.FC<{
   return null;
 };
 
-// Searchable beneficiary dropdown — replaces the old <select> for better UX with many applicants
 const SearchableBeneficiarySelect: React.FC<{
   applicants: ApprovedApplicant[];
   selectedAppId: string;
@@ -91,7 +108,6 @@ const SearchableBeneficiarySelect: React.FC<{
   const [search, setSearch] = useState("");
   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
-  // Close on click outside
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -217,16 +233,24 @@ export const LandTitles: React.FC = () => {
   const [province, setProvince] = useState("");
   const [municipality, setMunicipality] = useState("");
 
+  // Correction/Editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [existingTitleId, setExistingTitleId] = useState<string | null>(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [correctionApp, setCorrectionApp] = useState<{
+    internalStatus?: string;
+    internalNotes?: string;
+  } | null>(null);
+
   // Map & photo state
   const [mapCenter, setMapCenter] = useState<[number, number]>([
     10.2831, 122.9912,
-  ]); // Negros default
+  ]);
   const [mapZoom, setMapZoom] = useState(10);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
 
   const [errorVisible, setError] = useState<string | null>(null);
 
-  // Fix Leaflet default icon issue
   const defaultIcon = L.icon({
     iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
     iconRetinaUrl:
@@ -237,7 +261,6 @@ export const LandTitles: React.FC = () => {
     popupAnchor: [1, -34],
   });
 
-  // Coordinates sync: manual input updates map center
   React.useEffect(() => {
     const lat = parseFloat(geoLat);
     const lng = parseFloat(geoLng);
@@ -254,10 +277,8 @@ export const LandTitles: React.FC = () => {
     }
   }, [geoLat, geoLng]);
 
-  // Photo preview state (blob URLs for immediate preview) + pending files for upload
   const [pendingPhotoFiles, setPendingPhotoFiles] = useState<File[]>([]);
 
-  // Photo upload handler — previews locally, uploads to Storage on submit
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -267,10 +288,8 @@ export const LandTitles: React.FC = () => {
         setError(`Photo ${file.name} exceeds 10MB limit.`);
         continue;
       }
-      // Show local preview immediately
       const previewUrl = URL.createObjectURL(file);
       setPhotoPreviews((prev) => [...prev, previewUrl]);
-      // Store File for upload on submit
       setPendingPhotoFiles((prev) => [...prev, file]);
     }
     e.target.value = "";
@@ -278,7 +297,6 @@ export const LandTitles: React.FC = () => {
 
   const removePhoto = (idx: number) => {
     setPendingPhotoFiles((prev) => prev.filter((_, i) => i !== idx));
-    // Revoke blob URL to free memory
     const previewUrl = photoPreviews[idx];
     if (previewUrl && previewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(previewUrl);
@@ -294,24 +312,32 @@ export const LandTitles: React.FC = () => {
   const fetchApprovedApplicants = async () => {
     try {
       setLoading(true);
+      // Get all forwarded_to_surveyor apps (both new and correction-needed)
       const q = query(
         collection(db, "applications"),
         where("status", "==", "forwarded_to_surveyor"),
       );
       const snap = await getDocs(q);
 
+      // Get all existing land titles
       const titleSnap = await getDocs(collection(db, "landTitles"));
       const encodedIds = new Set<string>();
+      const existingTitles: Record<string, ExistingTitle> = {};
       titleSnap.forEach((d) => {
-        const data = d.data();
-        if (data.applicationId) encodedIds.add(data.applicationId);
+        const data = d.data() as ExistingTitle;
+        if (data.applicationId) {
+          encodedIds.add(data.applicationId);
+          existingTitles[data.applicationId] = { ...data, titleId: d.id };
+        }
       });
 
       const list: ApprovedApplicant[] = [];
       snap.forEach((d) => {
         const data = d.data();
         const submittedAt = data.submittedAt || "";
-        if (!encodedIds.has(d.id)) {
+        const internalStatus = data.internalStatus || "";
+        // Include apps that don't have titles yet, OR have correction_surveyor status
+        if (!encodedIds.has(d.id) || internalStatus === "correction_surveyor") {
           list.push({
             id: d.id,
             userId: data.userId,
@@ -319,12 +345,11 @@ export const LandTitles: React.FC = () => {
             userMunicipality: data.userMunicipality || "",
             userBarangay: data.userBarangay || "",
             userProvince: data.userProvince || "Negros Occidental",
-            submittedAt, // keep for sorting
+            submittedAt,
           });
         }
       });
 
-      // Sort client-side (newest first)
       list.sort((a, b) =>
         (b.submittedAt || "").localeCompare(a.submittedAt || ""),
       );
@@ -332,14 +357,30 @@ export const LandTitles: React.FC = () => {
       setAllApplicants(list);
       setTotalCount(list.length);
       setApprovedApplicants(list.slice(0, PAGE_SIZE));
+
       if (list.length > 0) {
-        setSelectedAppId(list[0].id);
+        const firstId = list[0].id;
+        setSelectedAppId(firstId);
+        // Check if first app needs editing (has existing title for correction)
+        if (existingTitles[firstId]) {
+          const ext = existingTitles[firstId];
+          // Pre-fill form with existing data
+          setTitleNumber(ext.titleNumber || "");
+          setLotNumber(ext.lotNumber || "");
+          setAreaHectares(String(ext.areaHectares || ""));
+          setGeoLat(ext.geoLat || "");
+          setGeoLng(ext.geoLng || "");
+          setProvince(ext.province || "");
+          setMunicipality(ext.municipality || "");
+          if (ext.landPhotos && ext.landPhotos.length > 0) {
+            setPhotoPreviews(ext.landPhotos);
+          }
+          setIsEditing(true);
+          setExistingTitleId(ext.titleId);
+        }
       }
     } catch (err) {
-      console.error(
-        "Failed to load applications — check Firestore index:",
-        err,
-      );
+      console.error("Failed to load applications:", err);
       setError(
         "Failed to load applications. If this persists, contact your admin to check Firestore indexes.",
       );
@@ -351,6 +392,66 @@ export const LandTitles: React.FC = () => {
   useEffect(() => {
     fetchApprovedApplicants();
   }, []);
+
+  // When selecting an app, check if we need to enter edit mode
+  const handleSelectApp = async (appId: string) => {
+    setSelectedAppId(appId);
+    // Reset form
+    setIsEditing(false);
+    setExistingTitleId(null);
+    setCorrectionApp(null);
+    setEditNotes("");
+    setTitleNumber("");
+    setLotNumber("");
+    setAreaHectares("");
+    setGeoLat("");
+    setGeoLng("");
+    setProvince("");
+    setMunicipality("");
+    setPendingPhotoFiles([]);
+    setPhotoPreviews([]);
+    setError(null);
+
+    // Look up existing land title for this app
+    try {
+      const titleSnap = await getDocs(collection(db, "landTitles"));
+      let found: ExistingTitle | null = null;
+      titleSnap.forEach((d) => {
+        const data = d.data() as ExistingTitle;
+        if (data.applicationId === appId) {
+          found = { ...data, titleId: d.id };
+        }
+      });
+
+      // Also get app's internal correction info
+      const { getDoc: gd } = await import("firebase/firestore");
+      const appDoc = await gd(doc(db, "applications", appId));
+      const appData = appDoc.data();
+      if (appData?.internalStatus === "correction_surveyor") {
+        setCorrectionApp({
+          internalStatus: appData.internalStatus,
+          internalNotes: appData.internalNotes || "",
+        });
+      }
+
+      if (found) {
+        setTitleNumber(found.titleNumber || "");
+        setLotNumber(found.lotNumber || "");
+        setAreaHectares(String(found.areaHectares || ""));
+        setGeoLat(found.geoLat || "");
+        setGeoLng(found.geoLng || "");
+        setProvince(found.province || "");
+        setMunicipality(found.municipality || "");
+        if (found.landPhotos && found.landPhotos.length > 0) {
+          setPhotoPreviews([...found.landPhotos]);
+        }
+        setIsEditing(true);
+        setExistingTitleId(found.titleId);
+      }
+    } catch (err) {
+      console.error("Failed to check existing title:", err);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -376,17 +477,21 @@ export const LandTitles: React.FC = () => {
     try {
       setLoading(true);
 
-      // Client-side duplicate check — fetch all titles once instead of a composite-indexed query
-      const allTitlesSnap = await getDocs(collection(db, "landTitles"));
-      const isDuplicate = allTitlesSnap.docs.some(
-        (d) => d.data().titleNumber?.toUpperCase() === cleanTitle,
-      );
-      if (isDuplicate) {
-        setError(
-          `CRITICAL WARNING: The Land Title ID: '${cleanTitle}' is already registered in our database! Double registration is blocked to prevent professional squatters.`,
+      // Duplicate check (skip for edits of same title)
+      if (!isEditing) {
+        const allTitlesSnap = await getDocs(collection(db, "landTitles"));
+        const isDuplicate = allTitlesSnap.docs.some(
+          (d) =>
+            d.data().titleNumber?.toUpperCase() === cleanTitle &&
+            d.id !== existingTitleId,
         );
-        setLoading(false);
-        return;
+        if (isDuplicate) {
+          setError(
+            `CRITICAL WARNING: The Land Title ID: '${cleanTitle}' is already registered in our database! Double registration is blocked.`,
+          );
+          setLoading(false);
+          return;
+        }
       }
 
       const selectedAppRecord = allApplicants.find(
@@ -398,75 +503,135 @@ export const LandTitles: React.FC = () => {
         return;
       }
 
-      const generatedTitleId = `TTL-${Math.floor(100000 + Math.random() * 900000)}`;
-
       // Upload land photos to Firebase Storage
       const photoUrls: string[] = [];
+      // Keep existing photo URLs that weren't removed
+      if (isEditing && photoPreviews.length > 0) {
+        // For simplicity, if user uploaded new photos alongside existing ones, we try to
+        // keep existing URLs and only upload new files
+        const existingUrls = photoPreviews.filter(
+          (p) => !p.startsWith("blob:"),
+        );
+        photoUrls.push(...existingUrls);
+      }
+
       for (let i = 0; i < pendingPhotoFiles.length; i++) {
         const photoFile = pendingPhotoFiles[i];
         try {
-          const photoPath = getLandPhotoPath(generatedTitleId, i);
+          const titleRef = existingTitleId || `TTL-${Date.now()}`;
+          const photoPath = getLandPhotoPath(titleRef, photoUrls.length + i);
           const photoUrl = await uploadFile(photoFile, photoPath);
           photoUrls.push(photoUrl);
         } catch (uploadErr) {
           console.error(`Failed to upload photo ${i}:`, uploadErr);
-          // Non-fatal — continue without this photo
         }
       }
 
-      await setDoc(doc(db, "landTitles", generatedTitleId), {
-        titleId: generatedTitleId,
-        applicationId: selectedAppRecord.id,
-        beneficiaryId: selectedAppRecord.userId,
-        beneficiaryName: selectedAppRecord.userName,
-        titleNumber: cleanTitle,
-        lotNumber: lotNumber.trim(),
-        areaHectares: Number(areaHectares),
-        province: province,
-        municipality: municipality,
-        geoLat: geoLat.trim(),
-        geoLng: geoLng.trim(),
-        surveyorId: profile?.name || "Surveyor Officer",
-        encodedAt: new Date().toISOString(),
-        landPhotos: photoUrls,
-      });
+      if (isEditing && existingTitleId) {
+        // UPDATE existing land title
+        const titleRef = doc(db, "landTitles", existingTitleId);
+        await updateDoc(titleRef, {
+          titleNumber: cleanTitle,
+          lotNumber: lotNumber.trim(),
+          areaHectares: Number(areaHectares),
+          province: province,
+          municipality: municipality,
+          geoLat: geoLat.trim(),
+          geoLng: geoLng.trim(),
+          surveyorId: profile?.name || "Surveyor Officer",
+          encodedAt: new Date().toISOString(),
+          ...(photoUrls.length > 0 ? { landPhotos: photoUrls } : {}),
+        });
 
-      const appDocRef = doc(db, "applications", selectedAppRecord.id);
-      await updateDoc(appDocRef, {
-        status: "verified",
-        surveyorEncodedAt: new Date().toISOString(),
-        surveyorName: profile?.name || "Surveyor Officer",
-        titleNumber: cleanTitle,
-      });
+        // Update application: resolve correction
+        const appDocRef = doc(db, "applications", selectedAppRecord.id);
+        await updateDoc(appDocRef, {
+          status: "verified",
+          internalStatus: "ok",
+          internalNotes: "",
+          internalAssignedTo: null,
+          internalAssignedRole: null,
+          surveyorEncodedAt: new Date().toISOString(),
+          surveyorName: profile?.name || "Surveyor Officer",
+          titleNumber: cleanTitle,
+        });
 
-      // Write audit log
-      await addDoc(collection(db, "auditLogs"), {
-        applicationId: selectedAppRecord.id,
-        timestamp: new Date().toISOString(),
-        actor: profile?.name || "Surveyor",
-        actorRole: "surveyor",
-        action: "land_encoded",
-        oldStatus: "forwarded_to_surveyor",
-        newStatus: "verified",
-        notes: `Land title ${cleanTitle} encoded — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
-      });
+        await addDoc(collection(db, "auditLogs"), {
+          applicationId: selectedAppRecord.id,
+          timestamp: new Date().toISOString(),
+          actor: profile?.name || "Surveyor",
+          actorRole: "surveyor",
+          action: "land_edited",
+          oldStatus: "forwarded_to_surveyor",
+          newStatus: "verified",
+          notes: `Land title ${cleanTitle} corrected — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}. ${editNotes ? `Notes: ${editNotes}` : ""}`,
+        });
 
-      // 🔔 Notify admin that surveyor has encoded a land title
-      await broadcastNotification(
-        "admin",
-        "encoded",
-        "Land Title Encoded — Ready for Admin Approval",
-        `Surveyor ${profile?.name} encoded title ${cleanTitle} for ${selectedAppRecord.userName} (${selectedAppRecord.id}).`,
-      );
+        await broadcastNotification(
+          "admin",
+          "correction_resolved",
+          "Land Title Correction Resolved",
+          `Surveyor ${profile?.name} corrected title ${cleanTitle} for ${selectedAppRecord.userName}. Ready for admin review.`,
+          selectedAppRecord.id,
+        );
 
-      setSubmitted(true);
-      setSubmittedTitle(cleanTitle);
+        setSubmittedTitle(cleanTitle);
+        setSubmitted(true);
+      } else {
+        // CREATE new land title
+        const generatedTitleId = `TTL-${Math.floor(100000 + Math.random() * 900000)}`;
+
+        await setDoc(doc(db, "landTitles", generatedTitleId), {
+          titleId: generatedTitleId,
+          applicationId: selectedAppRecord.id,
+          beneficiaryId: selectedAppRecord.userId,
+          beneficiaryName: selectedAppRecord.userName,
+          titleNumber: cleanTitle,
+          lotNumber: lotNumber.trim(),
+          areaHectares: Number(areaHectares),
+          province: province,
+          municipality: municipality,
+          geoLat: geoLat.trim(),
+          geoLng: geoLng.trim(),
+          surveyorId: profile?.name || "Surveyor Officer",
+          encodedAt: new Date().toISOString(),
+          landPhotos: photoUrls,
+        });
+
+        const appDocRef = doc(db, "applications", selectedAppRecord.id);
+        await updateDoc(appDocRef, {
+          status: "verified",
+          surveyorEncodedAt: new Date().toISOString(),
+          surveyorName: profile?.name || "Surveyor Officer",
+          titleNumber: cleanTitle,
+        });
+
+        await addDoc(collection(db, "auditLogs"), {
+          applicationId: selectedAppRecord.id,
+          timestamp: new Date().toISOString(),
+          actor: profile?.name || "Surveyor",
+          actorRole: "surveyor",
+          action: "land_encoded",
+          oldStatus: "forwarded_to_surveyor",
+          newStatus: "verified",
+          notes: `Land title ${cleanTitle} encoded — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
+        });
+
+        await broadcastNotification(
+          "admin",
+          "encoded",
+          "Land Title Encoded — Ready for Admin Approval",
+          `Surveyor ${profile?.name} encoded title ${cleanTitle} for ${selectedAppRecord.userName} (${selectedAppRecord.id}).`,
+        );
+
+        setSubmittedTitle(cleanTitle);
+        setSubmitted(true);
+      }
 
       await fetchApprovedApplicants();
     } catch (err) {
       console.error("Failed to save land title mapping:", err);
       const firebaseErr = err as { code?: string; message?: string };
-      // Show the actual Firestore error code for easier debugging
       if (firebaseErr.code === "permission-denied") {
         setError(
           "Permission denied. Your account may not have write access. Contact your admin.",
@@ -480,7 +645,7 @@ export const LandTitles: React.FC = () => {
         );
       } else if (firebaseErr.code === "not-found") {
         setError(
-          "The database collection could not be found. Make sure Firestore is enabled in the Firebase Console.",
+          "The database collection could not be found. Make sure Firestore is enabled.",
         );
       } else {
         setError(
@@ -511,12 +676,14 @@ export const LandTitles: React.FC = () => {
         <main className="p-8 max-w-4xl space-y-6">
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-left">
             <h2 className="text-lg font-bold text-slate-900 mb-2">
-              Encode New Verified Land Parcel
+              {isEditing
+                ? "Edit & Correct Land Parcel"
+                : "Encode New Verified Land Parcel"}
             </h2>
             <p className="text-slate-500 text-xs leading-relaxed mb-6">
-              Applications forwarded by staff for surveyor processing. Encode
-              land parcel details here — they will then be routed for Admin
-              approval.
+              {isEditing
+                ? "Admin has requested corrections to the land title below. Update the fields as needed and resubmit."
+                : "Applications forwarded by staff for surveyor processing. Encode land parcel details here — they will then be routed for Admin approval."}
             </p>
 
             {submitted && (
@@ -525,11 +692,14 @@ export const LandTitles: React.FC = () => {
                   <FileCheck size={20} className="shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold block">
-                      Title {submittedTitle} — Registered &amp; Locked!
+                      Title {submittedTitle} —{" "}
+                      {isEditing
+                        ? "Corrected & Updated!"
+                        : "Registered & Locked!"}
                     </span>
                     <span className="text-xs text-emerald-700 mt-1 block">
                       The land title has been encoded and is now queued for
-                      Admin approval. The beneficiary can see the update.
+                      Admin approval.
                     </span>
                   </div>
                 </div>
@@ -548,8 +718,10 @@ export const LandTitles: React.FC = () => {
                       setMunicipality("");
                       setPendingPhotoFiles([]);
                       setPhotoPreviews([]);
-                      setPendingPhotoFiles([]);
-                      setPhotoPreviews([]);
+                      setIsEditing(false);
+                      setExistingTitleId(null);
+                      setCorrectionApp(null);
+                      setEditNotes("");
                     }}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-900 text-white py-2 px-4 text-xs font-bold transition-all cursor-pointer"
                   >
@@ -568,6 +740,22 @@ export const LandTitles: React.FC = () => {
                     <ExternalLink size={14} />
                     <span>View in Search Registry</span>
                   </button>
+                </div>
+              </div>
+            )}
+
+            {correctionApp && correctionApp.internalNotes && (
+              <div className="mb-6 rounded-xl bg-red-50 p-5 border border-red-200 text-sm text-red-700">
+                <div className="flex items-start space-x-2.5">
+                  <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">
+                      Admin Correction Request
+                    </span>
+                    <p className="text-xs mt-1 leading-relaxed">
+                      {correctionApp.internalNotes}
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -599,9 +787,15 @@ export const LandTitles: React.FC = () => {
                       allApplicants.length > 0 ? allApplicants : applicants
                     }
                     selectedAppId={selectedAppId}
-                    onSelect={setSelectedAppId}
+                    onSelect={handleSelectApp}
                     totalCount={totalCount}
                   />
+                  {isEditing && (
+                    <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">
+                      <Edit size={10} />
+                      Editing existing title
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -842,6 +1036,22 @@ export const LandTitles: React.FC = () => {
                   )}
                 </div>
 
+                {/* Correction notes (editing mode) */}
+                {isEditing && (
+                  <div className="bg-amber-50 p-5 rounded-2xl border border-amber-200">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-amber-700 mb-2">
+                      Correction Notes (for audit trail)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Describe what was corrected..."
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      className="block w-full rounded-xl border border-amber-300 bg-white py-3 px-4 text-sm font-medium focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                )}
+
                 <div className="flex justify-end pt-4">
                   <button
                     type="submit"
@@ -853,7 +1063,11 @@ export const LandTitles: React.FC = () => {
                     ) : (
                       <>
                         <Check size={16} className="stroke-3" />
-                        <span>Audit and Register Title Parcel</span>
+                        <span>
+                          {isEditing
+                            ? "Submit Corrections & Update Title"
+                            : "Audit and Register Title Parcel"}
+                        </span>
                       </>
                     )}
                   </button>
