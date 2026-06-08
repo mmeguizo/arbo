@@ -45,7 +45,6 @@ export const NotificationBell: React.FC = () => {
 
   // Calculate dropdown position relative to the button
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
-  const [openUpward, setOpenUpward] = useState(false);
   useEffect(() => {
     if (open && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
@@ -54,7 +53,6 @@ export const NotificationBell: React.FC = () => {
       const spaceAbove = rect.top;
       const dropdownHeight = 384;
       const upward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
-      setOpenUpward(upward);
       setDropdownStyle({
         position: "fixed",
         left: rect.left + 8,

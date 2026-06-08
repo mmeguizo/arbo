@@ -106,16 +106,25 @@ export const Sidebar: React.FC = () => {
       >
         {/* Header Logo */}
         <div className="flex items-center space-x-3 px-6 py-6 border-b border-emerald-800">
-          <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center p-1 font-bold text-slate-800 shadow-md">
-            {/* Simple DAR designator */}
-            <div className="text-center">
-              <p className="text-[10px] leading-3 font-extrabold text-emerald-800">
-                DAR
-              </p>
-              <p className="text-[8px] leading-3 font-semibold text-amber-500">
-                PH
-              </p>
-            </div>
+          <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center p-0.5 shadow-md overflow-hidden">
+            <img
+              src="/dar_logo.png"
+              alt="DAR Logo"
+              className="h-full w-full object-contain"
+              onError={(e) => {
+                // Fallback to text if image doesn't load
+                (e.target as HTMLImageElement).style.display = "none";
+                const parent = (e.target as HTMLImageElement).parentElement;
+                if (parent) {
+                  parent.innerHTML = `
+                    <div class="text-center">
+                      <p class="text-[10px] leading-3 font-extrabold text-emerald-800">DAR</p>
+                      <p class="text-[8px] leading-3 font-semibold text-amber-500">PH</p>
+                    </div>
+                  `;
+                }
+              }}
+            />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight m-0 text-white">

@@ -415,11 +415,23 @@ export const LandTitles: React.FC = () => {
     // Look up existing land title for this app
     try {
       const titleSnap = await getDocs(collection(db, "landTitles"));
-      let found: ExistingTitle | null = null;
+      let foundTitleId: string | null = null;
+      const existingRows: Record<string, string> = {};
       titleSnap.forEach((d) => {
         const data = d.data() as ExistingTitle;
         if (data.applicationId === appId) {
-          found = { ...data, titleId: d.id };
+          foundTitleId = d.id;
+          // Store properties individually
+          existingRows.titleNumber = data.titleNumber || "";
+          existingRows.lotNumber = data.lotNumber || "";
+          existingRows.areaHectares = String(data.areaHectares || "");
+          existingRows.geoLat = data.geoLat || "";
+          existingRows.geoLng = data.geoLng || "";
+          existingRows.province = data.province || "";
+          existingRows.municipality = data.municipality || "";
+          if (data.landPhotos && data.landPhotos.length > 0) {
+            setPhotoPreviews([...data.landPhotos]);
+          }
         }
       });
 
@@ -434,19 +446,16 @@ export const LandTitles: React.FC = () => {
         });
       }
 
-      if (found) {
-        setTitleNumber(found.titleNumber || "");
-        setLotNumber(found.lotNumber || "");
-        setAreaHectares(String(found.areaHectares || ""));
-        setGeoLat(found.geoLat || "");
-        setGeoLng(found.geoLng || "");
-        setProvince(found.province || "");
-        setMunicipality(found.municipality || "");
-        if (found.landPhotos && found.landPhotos.length > 0) {
-          setPhotoPreviews([...found.landPhotos]);
-        }
+      if (foundTitleId) {
+        setTitleNumber(existingRows.titleNumber || "");
+        setLotNumber(existingRows.lotNumber || "");
+        setAreaHectares(existingRows.areaHectares || "");
+        setGeoLat(existingRows.geoLat || "");
+        setGeoLng(existingRows.geoLng || "");
+        setProvince(existingRows.province || "");
+        setMunicipality(existingRows.municipality || "");
         setIsEditing(true);
-        setExistingTitleId(found.titleId);
+        setExistingTitleId(foundTitleId);
       }
     } catch (err) {
       console.error("Failed to check existing title:", err);
