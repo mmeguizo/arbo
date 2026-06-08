@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { NotificationBell } from "./NotificationBell";
 import {
   LayoutDashboard,
   FileText,
@@ -99,7 +100,7 @@ export const Sidebar: React.FC = () => {
 
       {/* Sidebar container */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-64 transform bg-emerald-900 text-white transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:flex md:flex-col md:min-h-screen ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 transform bg-emerald-900 text-white transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:flex md:flex-col md:h-full ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -182,7 +183,7 @@ export const Sidebar: React.FC = () => {
             <div className="h-9 w-9 rounded-full bg-emerald-800 flex items-center justify-center font-bold text-sm uppercase text-amber-300">
               {profile?.name ? profile.name.substring(0, 2) : "US"}
             </div>
-            <div className="truncate text-left">
+            <div className="truncate text-left flex-1">
               <p className="text-xs font-bold text-slate-100 max-w-37.5 truncate m-0">
                 {profile?.name || "User"}
               </p>
@@ -190,6 +191,7 @@ export const Sidebar: React.FC = () => {
                 {profile?.role}
               </p>
             </div>
+            <NotificationBell />
           </div>
           <button
             onClick={handleLogout}

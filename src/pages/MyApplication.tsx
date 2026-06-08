@@ -11,10 +11,12 @@ import {
   addDoc,
   setDoc,
   onSnapshot,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { TitleMap } from "../components/TitleMap";
 import { formatDate } from "../utils/formatters";
+import { uploadFile, getDocumentPath, deleteFile } from "../utils/storage";
 import {
   FileText,
   CreditCard,
@@ -29,6 +31,8 @@ import {
   ScrollText,
   Printer,
   Camera,
+  Calendar,
+  ExternalLink,
 } from "lucide-react";
 
 type DocField = "cedula" | "birthCert" | "brgyCert" | "picture";
@@ -62,6 +66,16 @@ interface ApplicationData {
   notes: string;
 }
 
+interface AuditLogEntry {
+  timestamp: string;
+  actor: string;
+  actorRole: string;
+  action: string;
+  oldStatus: string | null;
+  newStatus: string;
+  notes: string;
+}
+
 export const MyApplication: React.FC = () => {
   const { profile, user } = useAuth();
   const [apps, setApps] = useState<ApplicationData[]>([]);
@@ -79,6 +93,10 @@ export const MyApplication: React.FC = () => {
     null,
   );
 
+  // Audit trail for ARB view
+  const [arbAuditLogs, setArbAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
   // Document management state
   const [previewDoc, setPreviewDoc] = useState<{
     title: string;
@@ -95,30 +113,56 @@ export const MyApplication: React.FC = () => {
   // After modifying a doc, push back to under_review so staff re-evaluates
   const revertedStatus = (): ApplicationStatus => "under_review";
 
+  // Helper to determine if a URL is a PDF (handles Firebase Storage URLs + data URIs)
+  const isPDF = (url: string | null): boolean => {
+    if (!url) return false;
+    // data URI from base64-uploaded PDF
+    if (url.startsWith("data:application/pdf")) return true;
+    // Firebase Storage URL check: look for parameter-based markers
+    if (url.includes("firebasestorage") && url.includes(".pdf")) return true;
+    // Generic path-based check
+    const lower = url.toLowerCase();
+    if (
+      lower.endsWith(".pdf") ||
+      lower.includes("/pdf") ||
+      lower.includes("content-type=application%2Fpdf") ||
+      lower.includes("content-type=application/pdf")
+    )
+      return true;
+    // Try detecting contentDisposition for PDF
+    if (lower.includes("name%3D.pdf") || lower.includes("name=.pdf"))
+      return true;
+    return false;
+  };
+
   const handleReplaceDocument = (
     type: DocField,
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
-    if (!file || !app) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setDocError(`File is too large (max 5MB). Please choose a smaller file.`);
+    if (!file || !app || !user) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setDocError(
+        `File is too large (max 10MB). Please choose a smaller file.`,
+      );
       e.target.value = "";
       return;
     }
     setDocError(null);
     setUpdatingDoc(type);
-    const reader = new FileReader();
-    reader.onloadend = async () => {
+
+    (async () => {
       try {
-        const base64 = reader.result as string;
+        const storagePath = getDocumentPath(user.uid, type, file);
+        const downloadUrl = await uploadFile(file, storagePath);
+
         const newStatus = revertedStatus();
         const appRef = doc(db, "applications", app.applicationId);
         await updateDoc(appRef, {
-          [`documents.${type}`]: base64,
+          [`documents.${type}`]: downloadUrl,
           status: newStatus,
         });
-        // Audit log for document upload
+
         await addDoc(collection(db, "auditLogs"), {
           applicationId: app.applicationId,
           timestamp: new Date().toISOString(),
@@ -129,30 +173,46 @@ export const MyApplication: React.FC = () => {
           newStatus,
           notes: `Updated document: ${type}`,
         });
-        // Listener will auto-update the UI
+
+        setApps((prev) =>
+          prev.map((a) =>
+            a.applicationId === app.applicationId
+              ? {
+                  ...a,
+                  documents: { ...a.documents, [type]: downloadUrl },
+                  status: newStatus,
+                }
+              : a,
+          ),
+        );
       } catch (err) {
         console.error("Failed to replace document:", err);
-        setDocError("Failed to update document. Please try again.");
+        setDocError("Failed to upload document. Please try again.");
       } finally {
         setUpdatingDoc(null);
         e.target.value = "";
       }
-    };
-    reader.readAsDataURL(file);
+    })();
   };
 
   const handleDeleteDocument = async (type: DocField) => {
-    if (!app) return;
+    if (!app || !user) return;
     setConfirmDelete(null);
     setUpdatingDoc(type);
     try {
+      const existingUrl = app.documents[type];
+      if (existingUrl) {
+        await deleteFile(existingUrl).catch((e) =>
+          console.warn("Could not delete storage file:", e),
+        );
+      }
+
       const newStatus = revertedStatus();
       const appRef = doc(db, "applications", app.applicationId);
       await updateDoc(appRef, {
         [`documents.${type}`]: null,
         status: newStatus,
       });
-      // Audit log for document removal
       await addDoc(collection(db, "auditLogs"), {
         applicationId: app.applicationId,
         timestamp: new Date().toISOString(),
@@ -163,7 +223,17 @@ export const MyApplication: React.FC = () => {
         newStatus,
         notes: `Removed document: ${type}`,
       });
-      // Listener will auto-update the UI
+      setApps((prev) =>
+        prev.map((a) =>
+          a.applicationId === app.applicationId
+            ? {
+                ...a,
+                documents: { ...a.documents, [type]: null },
+                status: newStatus,
+              }
+            : a,
+        ),
+      );
     } catch (err) {
       console.error("Failed to delete document:", err);
       setDocError("Failed to remove document. Please try again.");
@@ -177,7 +247,6 @@ export const MyApplication: React.FC = () => {
 
     setLoading(true);
 
-    // 1. Real-time listener for ALL user's applications
     const q = query(
       collection(db, "applications"),
       where("userId", "==", user.uid),
@@ -190,7 +259,6 @@ export const MyApplication: React.FC = () => {
           const appData = d.data() as ApplicationData;
           list.push({ ...appData, applicationId: d.id });
         });
-        // Sort newest first
         list.sort((a, b) =>
           (b.submittedAt || "").localeCompare(a.submittedAt || ""),
         );
@@ -204,7 +272,6 @@ export const MyApplication: React.FC = () => {
       },
     );
 
-    // 2. Real-time listener for all land titles (ARB can have multiple)
     const tQ = query(
       collection(db, "landTitles"),
       where("beneficiaryId", "==", user.uid),
@@ -221,11 +288,43 @@ export const MyApplication: React.FC = () => {
     };
   }, [user]);
 
+  // Fetch audit logs for the selected app
+  useEffect(() => {
+    if (!app) return;
+    setAuditLoading(true);
+    const q = query(
+      collection(db, "auditLogs"),
+      where("applicationId", "==", app.applicationId),
+      orderBy("timestamp", "desc"),
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const logs: AuditLogEntry[] = [];
+        snap.forEach((d) => {
+          logs.push(d.data() as AuditLogEntry);
+        });
+        setArbAuditLogs(logs);
+        setAuditLoading(false);
+      },
+      (err) => {
+        console.error("Audit log error:", err);
+        setAuditLoading(false);
+      },
+    );
+    return () => unsub();
+  }, [app?.applicationId]);
+
+  // Print-specific styles injected for certificate printing
+  const printCertificate = () => {
+    window.print();
+  };
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between z-10 shrink-0">
           <div className="text-left animate-fade-in">
@@ -257,7 +356,6 @@ export const MyApplication: React.FC = () => {
                 </span>
               </button>
             ))}
-            {/* Show "Create New" if first app is awarded or disputed */}
             {apps[0]?.status === "awarded" || apps[0]?.status === "disputed" ? (
               <button
                 onClick={async () => {
@@ -302,7 +400,7 @@ export const MyApplication: React.FC = () => {
             </div>
           </div>
         ) : (
-          <main className="flex-1 p-8 space-y-8 max-w-5xl">
+          <main className="p-8 space-y-8 max-w-5xl">
             {/* Top overview widget */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Profile card summary */}
@@ -313,10 +411,12 @@ export const MyApplication: React.FC = () => {
                       Resident Beneficiary
                     </span>
                     <h2 className="text-xl font-bold text-slate-900 mt-2">
-                      {profile?.name}
+                      {profile?.name || "Loading profile..."}
                     </h2>
                     <p className="text-xs text-slate-550 mt-1">
-                      {profile?.address}
+                      {profile?.address || profile?.barangay
+                        ? `${profile.barangay}, ${profile.municipality || "Negros Occidental"}`
+                        : ""}
                     </p>
                   </div>
                   <div className="h-14 w-14 rounded-full bg-emerald-800/10 border border-emerald-100 flex items-center justify-center overflow-hidden">
@@ -328,7 +428,7 @@ export const MyApplication: React.FC = () => {
                       />
                     ) : (
                       <span className="text-emerald-800 font-bold uppercase">
-                        {profile?.name.substring(0, 2)}
+                        {profile?.name ? profile.name.substring(0, 2) : "AR"}
                       </span>
                     )}
                   </div>
@@ -340,7 +440,7 @@ export const MyApplication: React.FC = () => {
                       Age
                     </span>
                     <span className="text-slate-700 font-bold">
-                      {profile?.age} years old
+                      {profile?.age ?? "—"} years old
                     </span>
                   </div>
                   <div>
@@ -348,7 +448,7 @@ export const MyApplication: React.FC = () => {
                       Contact
                     </span>
                     <span className="text-slate-700 font-bold">
-                      {profile?.contact}
+                      {profile?.contact || "—"}
                     </span>
                   </div>
                   <div>
@@ -356,7 +456,7 @@ export const MyApplication: React.FC = () => {
                       Barangay
                     </span>
                     <span className="text-slate-700 font-bold">
-                      {profile?.barangay}
+                      {profile?.barangay || "—"}
                     </span>
                   </div>
                   <div>
@@ -398,7 +498,6 @@ export const MyApplication: React.FC = () => {
                         {app.status === "disputed" &&
                           "Your application has been flagged for review. See remarks below for details on what needs to be corrected."}
                       </p>
-                      {/* Show remarks if disputed or if any remarks exist */}
                       {(app.status === "disputed" ||
                         app.staffNotes ||
                         app.adminNotes) && (
@@ -417,7 +516,6 @@ export const MyApplication: React.FC = () => {
                           )}
                         </div>
                       )}
-                      {/* ARB response box when disputed */}
                       {app.status === "disputed" && (
                         <div className="space-y-2 pt-2">
                           <textarea
@@ -439,6 +537,8 @@ export const MyApplication: React.FC = () => {
                               await updateDoc(appRef, {
                                 arbResponse: arbResponse.trim(),
                                 status: "under_review",
+                                staffNotes: "",
+                                adminNotes: "",
                               });
                               await addDoc(collection(db, "auditLogs"), {
                                 applicationId: app.applicationId,
@@ -456,7 +556,7 @@ export const MyApplication: React.FC = () => {
                             disabled={loading || !arbResponse.trim()}
                             className="rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-2 px-4 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
                           >
-                            Respond &amp; Resubmit for Review
+                            Respond & Resubmit for Review
                           </button>
                         </div>
                       )}
@@ -636,7 +736,6 @@ export const MyApplication: React.FC = () => {
                 </div>
               </div>
             ) : app ? (
-              /* No land titles yet — show empty state */
               <div className="bg-slate-50 rounded-2xl border border-dashed border-slate-300 p-6 text-center">
                 <MapPin size={24} className="text-slate-300 mx-auto mb-2" />
                 <h3 className="text-sm font-bold text-slate-500">
@@ -680,7 +779,6 @@ export const MyApplication: React.FC = () => {
                   </div>
                 )}
 
-                {/* Document cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 mt-5">
                   {(
                     [
@@ -738,13 +836,12 @@ export const MyApplication: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* Thumbnail or missing badge */}
                         {src ? (
                           <button
                             onClick={() => setPreviewDoc({ title: label, src })}
                             className="relative group h-24 w-full bg-white rounded-xl border border-slate-200 overflow-hidden flex items-center justify-center shadow-inner cursor-pointer"
                           >
-                            {src.startsWith("data:application/pdf") ? (
+                            {isPDF(src) ? (
                               <span className="text-[10px] font-bold text-slate-500 uppercase">
                                 PDF Document
                               </span>
@@ -753,8 +850,25 @@ export const MyApplication: React.FC = () => {
                                 src={src}
                                 alt={`${label} preview`}
                                 className="h-full w-full object-contain"
+                                onError={(e) => {
+                                  // If image fails to load (might be PDF stored as image), show PDF badge
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                  const parent = (e.target as HTMLImageElement)
+                                    .parentElement;
+                                  if (parent) {
+                                    const badge =
+                                      parent.querySelector(".pdf-fallback");
+                                    if (badge)
+                                      (badge as HTMLElement).style.display =
+                                        "flex";
+                                  }
+                                }}
                               />
                             )}
+                            <span className="pdf-fallback text-[10px] font-bold text-slate-500 uppercase hidden">
+                              PDF Document
+                            </span>
                             <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                               <Eye size={18} className="text-white" />
                             </div>
@@ -765,10 +879,8 @@ export const MyApplication: React.FC = () => {
                           </span>
                         )}
 
-                        {/* Action buttons — hidden once verified */}
                         {canModify && (
                           <div className="flex items-center justify-center gap-2 w-full pt-1">
-                            {/* Replace */}
                             <label
                               className={`flex items-center space-x-1 text-[10px] font-bold cursor-pointer px-2.5 py-1.5 rounded-lg border transition-colors ${
                                 isUpdating
@@ -791,7 +903,6 @@ export const MyApplication: React.FC = () => {
                               />
                             </label>
 
-                            {/* Delete — only if document exists */}
                             {src && (
                               <button
                                 disabled={isUpdating}
@@ -815,7 +926,75 @@ export const MyApplication: React.FC = () => {
               </div>
             )}
 
-            {/* Status revert notice when a doc is being managed */}
+            {/* Application Audit Trail for ARB */}
+            {app && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-left">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Calendar size={14} className="text-emerald-700" />
+                  Application Audit Trail
+                  <span className="ml-1 font-normal normal-case text-slate-400">
+                    ({arbAuditLogs.length})
+                  </span>
+                </h3>
+                {auditLoading ? (
+                  <p className="text-xs text-slate-400 italic">
+                    Loading audit history...
+                  </p>
+                ) : arbAuditLogs.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">
+                    No processing history recorded yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {arbAuditLogs.map((log, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start space-x-3 text-xs border-l-2 border-slate-200 pl-3 py-1"
+                      >
+                        <div className="shrink-0">
+                          <span className="text-[10px] text-slate-400 block">
+                            {new Date(log.timestamp).toLocaleString()}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-700">
+                            {log.actor}
+                          </span>
+                          <span className="text-slate-400">
+                            {" "}
+                            ({log.actorRole}){" "}
+                          </span>
+                          <span className="text-slate-500">
+                            {log.action === "status_change"
+                              ? "changed status"
+                              : log.action.replace(/_/g, " ")}
+                          </span>
+                          {log.oldStatus && (
+                            <span className="text-slate-400">
+                              {" "}
+                              from{" "}
+                              <span className="font-semibold">
+                                {log.oldStatus.replace(/_/g, " ")}
+                              </span>
+                            </span>
+                          )}
+                          <span className="text-slate-400"> → </span>
+                          <span className="font-semibold text-emerald-700">
+                            {log.newStatus.replace(/_/g, " ")}
+                          </span>
+                          {log.notes && (
+                            <p className="text-[11px] text-slate-500 mt-0.5 italic">
+                              "{log.notes}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {canModify && app?.status !== "under_review" && (
               <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4 text-left flex items-start space-x-3">
                 <RotateCcw
@@ -855,13 +1034,45 @@ export const MyApplication: React.FC = () => {
                 <X size={20} />
               </button>
             </div>
-            <div className="flex-1 overflow-auto bg-slate-900 flex items-center justify-center p-6 min-h-80">
-              {previewDoc.src.startsWith("data:application/pdf") ? (
-                <iframe
-                  src={previewDoc.src}
-                  title={previewDoc.title}
-                  className="w-full h-[70vh] rounded-lg"
-                />
+            <div className="flex-1 overflow-auto bg-slate-900 flex flex-col items-center justify-center p-6 min-h-80">
+              {isPDF(previewDoc.src) ? (
+                <div className="flex flex-col items-center gap-4 w-full">
+                  <div className="flex items-center gap-2 text-white/70 text-xs">
+                    <FileText size={16} />
+                    <span>PDF Document</span>
+                  </div>
+                  <object
+                    data={previewDoc.src}
+                    type="application/pdf"
+                    className="w-full h-[65vh] rounded-lg bg-white"
+                  >
+                    <div className="text-center py-12 text-white">
+                      <p className="text-sm mb-3">
+                        PDF preview not available in this browser.
+                      </p>
+                      <a
+                        href={previewDoc.src}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2 px-4 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Eye size={14} />
+                        Open PDF in New Tab
+                      </a>
+                    </div>
+                  </object>
+                  <a
+                    href={previewDoc.src}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-1.5 px-4 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink size={12} />
+                    Open in new tab
+                  </a>
+                </div>
               ) : (
                 <img
                   src={previewDoc.src}
@@ -916,10 +1127,10 @@ export const MyApplication: React.FC = () => {
 
       {/* CLOA Certificate Modal */}
       {certificateTitle && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden text-left border border-slate-200 my-auto">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8 bg-slate-900/40 backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white print:block print:static print:z-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden text-left border border-slate-200 my-auto print:shadow-none print:border-none print:max-w-full print:my-0">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-900 text-white sticky top-0 z-10">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-900 text-white sticky top-0 z-10 print:hidden">
               <div className="flex items-center gap-3">
                 <ScrollText size={20} className="text-amber-400" />
                 <div>
@@ -939,14 +1150,12 @@ export const MyApplication: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto print:max-h-none print:overflow-visible">
               {/* Certificate Hero */}
-              <div className="bg-gradient-to-br from-emerald-50 via-white to-amber-50 border-2 border-emerald-200 rounded-2xl p-8 text-center relative overflow-hidden">
-                {/* Decorative border */}
-                <div className="absolute inset-0 border-4 border-emerald-800/10 rounded-2xl pointer-events-none"></div>
-                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-emerald-800 via-amber-500 to-emerald-800"></div>
+              <div className="bg-gradient-to-br from-emerald-50 via-white to-amber-50 border-2 border-emerald-200 rounded-2xl p-8 text-center relative overflow-hidden print:border-4 print:border-emerald-800">
+                <div className="absolute inset-0 border-4 border-emerald-800/10 rounded-2xl pointer-events-none print:border-emerald-800"></div>
+                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-emerald-800 via-amber-500 to-emerald-800 print:h-2"></div>
 
-                {/* Seal */}
                 <div className="h-16 w-16 rounded-full bg-emerald-800 flex items-center justify-center mx-auto mb-4 shadow-lg border-2 border-amber-400">
                   <div className="text-center text-white">
                     <p className="text-[8px] leading-3 font-extrabold tracking-wider">
@@ -984,15 +1193,15 @@ export const MyApplication: React.FC = () => {
               </div>
 
               {/* Title Summary Table */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <div className="bg-slate-50 px-5 py-3 border-b border-slate-200">
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden print:border-2 print:border-slate-400">
+                <div className="bg-slate-50 px-5 py-3 border-b border-slate-200 print:bg-slate-100">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Awarded Agrarian Land Parcel
                   </span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-[9px] uppercase font-bold text-slate-400 tracking-wider">
+                    <thead className="bg-slate-50 text-[9px] uppercase font-bold text-slate-400 tracking-wider print:bg-slate-100 print:text-slate-600">
                       <tr>
                         <th className="px-5 py-3 text-left">Title #</th>
                         <th className="px-5 py-3 text-left">Lot #</th>
@@ -1032,8 +1241,8 @@ export const MyApplication: React.FC = () => {
               </div>
 
               {/* Map */}
-              {certificateTitle.geoLat && certificateTitle.geoLat && (
-                <div>
+              {certificateTitle.geoLat && certificateTitle.geoLng && (
+                <div className="print:hidden">
                   <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-3">
                     <MapPin size={14} className="text-emerald-700" />
                     Land Parcel Location
@@ -1055,7 +1264,7 @@ export const MyApplication: React.FC = () => {
                       <Camera size={14} className="text-emerald-700" />
                       Land Photos
                     </h4>
-                    <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-3 md:grid-cols-5 gap-3 print:grid-cols-4">
                       {certificateTitle.landPhotos.map((src, i) => (
                         <div
                           key={i}
@@ -1073,7 +1282,7 @@ export const MyApplication: React.FC = () => {
                 )}
 
               {/* Footer note */}
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center print:bg-amber-50/50">
                 <p className="text-[10px] text-amber-800 leading-relaxed">
                   This digital certificate serves as official proof of CLOA
                   award. The corresponding Original Certificate of Title (OCT)
@@ -1085,15 +1294,13 @@ export const MyApplication: React.FC = () => {
             </div>
 
             {/* Actions */}
-            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex items-center justify-between sticky bottom-0">
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex items-center justify-between sticky bottom-0 print:hidden">
               <button
-                onClick={() => {
-                  window.print();
-                }}
+                onClick={printCertificate}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 py-2 px-4 text-xs font-bold transition-colors cursor-pointer"
               >
                 <Printer size={14} />
-                <span>Print</span>
+                <span>Print Certificate</span>
               </button>
               <button
                 onClick={() => setCertificateTitle(null)}

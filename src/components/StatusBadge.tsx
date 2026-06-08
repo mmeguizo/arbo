@@ -28,7 +28,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
           text: "text-emerald-700",
           border: "border-emerald-200",
           dot: "bg-emerald-500",
-          label: "Admin Approved",
+          label: "For Admin Approval",
         };
       case "awarded":
         return {

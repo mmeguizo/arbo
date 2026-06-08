@@ -109,37 +109,57 @@ export const Search: React.FC = () => {
       return;
     }
 
+    let cancelled = false;
     const fetchDetails = async () => {
       setDetailLoading(true);
 
-      // Fetch beneficiary profile
-      if (selectedRecord.beneficiaryId) {
-        const userRef = doc(db, "users", selectedRecord.beneficiaryId);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          setBeneficiaryProfile(userSnap.data() as BeneficiaryProfile);
+      try {
+        // Fetch beneficiary profile
+        if (selectedRecord.beneficiaryId) {
+          try {
+            const userRef = doc(db, "users", selectedRecord.beneficiaryId);
+            const userSnap = await getDoc(userRef);
+            if (!cancelled && userSnap.exists()) {
+              setBeneficiaryProfile(userSnap.data() as BeneficiaryProfile);
+            } else if (!cancelled) {
+              setBeneficiaryProfile(null);
+            }
+          } catch {
+            if (!cancelled) setBeneficiaryProfile(null);
+          }
+        } else {
+          setBeneficiaryProfile(null);
         }
-      }
 
-      // Fetch audit logs for this application
-      if (selectedRecord.applicationId) {
-        const logsQ = query(
-          collection(db, "auditLogs"),
-          where("applicationId", "==", selectedRecord.applicationId),
-          orderBy("timestamp", "desc"),
-        );
-        const logsSnap = await getDocs(logsQ);
-        const logs: AuditEntry[] = [];
-        logsSnap.forEach((d) => {
-          logs.push({ id: d.id, ...d.data() } as AuditEntry);
-        });
-        setTitleAuditLogs(logs);
+        // Fetch audit logs for this application
+        if (selectedRecord.applicationId) {
+          try {
+            const logsQ = query(
+              collection(db, "auditLogs"),
+              where("applicationId", "==", selectedRecord.applicationId),
+              orderBy("timestamp", "desc"),
+            );
+            const logsSnap = await getDocs(logsQ);
+            if (!cancelled) {
+              const logs: AuditEntry[] = [];
+              logsSnap.forEach((d) => {
+                logs.push({ id: d.id, ...d.data() } as AuditEntry);
+              });
+              setTitleAuditLogs(logs);
+            }
+          } catch {
+            if (!cancelled) setTitleAuditLogs([]);
+          }
+        }
+      } finally {
+        if (!cancelled) setDetailLoading(false);
       }
-
-      setDetailLoading(false);
     };
 
     fetchDetails();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedRecord]);
 
   // Load all titles from Firestore with real-time listener

@@ -45,9 +45,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (docSnap.exists()) {
         setProfile({ uid: currentUser.uid, ...docSnap.data() } as UserProfile);
       } else {
-        // Fallback for new registration context
-        console.warn("User profile not found in Firestore yet.");
+        // No Firestore profile — this is an orphaned auth account, sign out forcefully
+        console.warn("User profile not found in Firestore — signing out.");
+        await signOut(auth);
         setProfile(null);
+        setUser(null);
       }
     } catch (error) {
       console.error("Error fetching user profile:", error);

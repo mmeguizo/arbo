@@ -6,6 +6,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 // Pages
@@ -49,89 +50,91 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+        <NotificationProvider>
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          {/* Protected Routes */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute
-                allowedRoles={["admin", "staff", "surveyor", "arb"]}
-              >
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
+            {/* Protected Routes */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute
+                  allowedRoles={["admin", "staff", "surveyor", "arb"]}
+                >
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/my-application"
-            element={
-              <ProtectedRoute allowedRoles={["arb"]}>
-                <MyApplication />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/my-application"
+              element={
+                <ProtectedRoute allowedRoles={["arb"]}>
+                  <MyApplication />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/review-apps"
-            element={
-              <ProtectedRoute allowedRoles={["admin", "staff"]}>
-                <ReviewApps />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/review-apps"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "staff"]}>
+                  <ReviewApps />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/land-titles"
-            element={
-              <ProtectedRoute allowedRoles={["surveyor", "admin"]}>
-                <LandTitles />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/land-titles"
+              element={
+                <ProtectedRoute allowedRoles={["surveyor", "admin"]}>
+                  <LandTitles />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/search"
-            element={
-              <ProtectedRoute allowedRoles={["admin", "staff", "surveyor"]}>
-                <Search />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/search"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "staff", "surveyor"]}>
+                  <Search />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/accounts"
-            element={
-              <ProtectedRoute allowedRoles={["admin"]}>
-                <AdminUsers />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/accounts"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminUsers />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/reports"
-            element={
-              <ProtectedRoute allowedRoles={["admin"]}>
-                <Reports />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/reports"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <Reports />
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/audit-logs"
-            element={
-              <ProtectedRoute allowedRoles={["admin", "staff", "surveyor"]}>
-                <AuditLogs />
-              </ProtectedRoute>
-            }
-          />
+            <Route
+              path="/audit-logs"
+              element={
+                <ProtectedRoute allowedRoles={["admin", "staff", "surveyor"]}>
+                  <AuditLogs />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Wildcard Fallback redirection */}
-          <Route path="*" element={<AuthRedirect />} />
-        </Routes>
+            {/* Wildcard Fallback redirection */}
+            <Route path="*" element={<AuthRedirect />} />
+          </Routes>
+        </NotificationProvider>
       </AuthProvider>
     </Router>
   );
