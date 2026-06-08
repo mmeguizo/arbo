@@ -45,20 +45,22 @@ export const NotificationBell: React.FC = () => {
 
   // Calculate dropdown position relative to the button
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const [openUpward, setOpenUpward] = useState(false);
   useEffect(() => {
     if (open && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      // Position the dropdown above the button if there's not enough space below
+      // Position dropdown to the right of the sidebar (left edge of bell), not from window right
       const spaceBelow = window.innerHeight - rect.bottom;
       const spaceAbove = rect.top;
-      const dropdownHeight = 384; // max-h-80 = 20rem = 320px + padding
-      const openUpward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+      const dropdownHeight = 384;
+      const upward = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+      setOpenUpward(upward);
       setDropdownStyle({
         position: "fixed",
-        ...(openUpward
+        left: rect.left + 8,
+        ...(upward
           ? { bottom: window.innerHeight - rect.top + 8 }
           : { top: rect.bottom + 8 }),
-        right: Math.max(8, window.innerWidth - rect.right),
         zIndex: 99999,
       });
     }

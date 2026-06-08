@@ -32,6 +32,7 @@ import {
   Printer,
   Camera,
   Calendar,
+  ExternalLink,
 } from "lucide-react";
 
 type DocField = "cedula" | "birthCert" | "brgyCert" | "picture";
@@ -1033,14 +1034,45 @@ export const MyApplication: React.FC = () => {
                 <X size={20} />
               </button>
             </div>
-            <div className="flex-1 overflow-auto bg-slate-900 flex items-center justify-center p-6 min-h-80">
+            <div className="flex-1 overflow-auto bg-slate-900 flex flex-col items-center justify-center p-6 min-h-80">
               {isPDF(previewDoc.src) ? (
-                <iframe
-                  src={previewDoc.src}
-                  title={previewDoc.title}
-                  className="w-full h-[70vh] rounded-lg"
-                  sandbox="allow-scripts allow-same-origin"
-                />
+                <div className="flex flex-col items-center gap-4 w-full">
+                  <div className="flex items-center gap-2 text-white/70 text-xs">
+                    <FileText size={16} />
+                    <span>PDF Document</span>
+                  </div>
+                  <object
+                    data={previewDoc.src}
+                    type="application/pdf"
+                    className="w-full h-[65vh] rounded-lg bg-white"
+                  >
+                    <div className="text-center py-12 text-white">
+                      <p className="text-sm mb-3">
+                        PDF preview not available in this browser.
+                      </p>
+                      <a
+                        href={previewDoc.src}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2 px-4 transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Eye size={14} />
+                        Open PDF in New Tab
+                      </a>
+                    </div>
+                  </object>
+                  <a
+                    href={previewDoc.src}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-1.5 px-4 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink size={12} />
+                    Open in new tab
+                  </a>
+                </div>
               ) : (
                 <img
                   src={previewDoc.src}

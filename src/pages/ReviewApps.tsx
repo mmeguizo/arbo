@@ -28,6 +28,7 @@ import {
   RotateCcw,
   ArrowLeft,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 interface Application {
@@ -471,12 +472,26 @@ export const ReviewApps: React.FC = () => {
               CLOA Document Processing
             </h1>
           </div>
-          <span className="text-xs bg-emerald-50 text-emerald-800 font-bold px-3 py-1.5 rounded-lg border border-emerald-100">
-            Evaluating role:{" "}
-            <span className="uppercase text-amber-600 font-extrabold">
-              {profile?.role}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setLoading(true);
+                // Force re-render which triggers onSnapshot refresh
+                setTimeout(() => setLoading(false), 100);
+              }}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-[10px] font-bold px-2.5 py-1.5 transition-colors cursor-pointer"
+              title="Refresh list"
+            >
+              <RefreshCw size={12} />
+              Refresh
+            </button>
+            <span className="text-xs bg-emerald-50 text-emerald-800 font-bold px-3 py-1.5 rounded-lg border border-emerald-100">
+              Evaluating role:{" "}
+              <span className="uppercase text-amber-600 font-extrabold">
+                {profile?.role}
+              </span>
             </span>
-          </span>
+          </div>
         </header>
 
         <div className="flex-1 flex overflow-hidden">
