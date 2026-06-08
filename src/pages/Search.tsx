@@ -1,7 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar";
-import { collection, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
+} from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
   Search as SearchIcon,
@@ -16,10 +25,20 @@ import {
   Calendar,
   Globe,
   FileText,
+  Phone,
+  Mail,
+  Camera,
+  ClipboardList,
+  ArrowRight,
 } from "lucide-react";
+import { MapContainer, TileLayer, Marker } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 interface SearchResult {
   titleId: string;
+  applicationId: string;
+  beneficiaryId: string;
   titleNumber: string;
   lotNumber: string;
   areaHectares: number;
@@ -30,6 +49,28 @@ interface SearchResult {
   beneficiaryName: string;
   surveyorId: string;
   encodedAt: string;
+  landPhotos?: string[];
+}
+
+interface BeneficiaryProfile {
+  name: string;
+  email: string;
+  contact: string;
+  address: string;
+  barangay: string;
+  municipality: string;
+  province: string;
+}
+
+interface AuditEntry {
+  id: string;
+  timestamp: string;
+  actor: string;
+  actorRole: string;
+  action: string;
+  oldStatus: string | null;
+  newStatus: string;
+  notes: string;
 }
 
 export const Search: React.FC = () => {
@@ -40,23 +81,86 @@ export const Search: React.FC = () => {
   const [records, setRecords] = useState<SearchResult[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRecord, setSelectedRecord] = useState<SearchResult | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<SearchResult | null>(
+    null,
+  );
+  const [beneficiaryProfile, setBeneficiaryProfile] =
+    useState<BeneficiaryProfile | null>(null);
+  const [titleAuditLogs, setTitleAuditLogs] = useState<AuditEntry[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+
+  // Fix Leaflet default icon
+  const defaultIcon = L.icon({
+    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+    iconRetinaUrl:
+      "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+  });
+
+  // Fetch beneficiary profile + audit logs when a record is selected
+  useEffect(() => {
+    if (!selectedRecord) {
+      setBeneficiaryProfile(null);
+      setTitleAuditLogs([]);
+      return;
+    }
+
+    const fetchDetails = async () => {
+      setDetailLoading(true);
+
+      // Fetch beneficiary profile
+      if (selectedRecord.beneficiaryId) {
+        const userRef = doc(db, "users", selectedRecord.beneficiaryId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          setBeneficiaryProfile(userSnap.data() as BeneficiaryProfile);
+        }
+      }
+
+      // Fetch audit logs for this application
+      if (selectedRecord.applicationId) {
+        const logsQ = query(
+          collection(db, "auditLogs"),
+          where("applicationId", "==", selectedRecord.applicationId),
+          orderBy("timestamp", "desc"),
+        );
+        const logsSnap = await getDocs(logsQ);
+        const logs: AuditEntry[] = [];
+        logsSnap.forEach((d) => {
+          logs.push({ id: d.id, ...d.data() } as AuditEntry);
+        });
+        setTitleAuditLogs(logs);
+      }
+
+      setDetailLoading(false);
+    };
+
+    fetchDetails();
+  }, [selectedRecord]);
 
   // Load all titles from Firestore with real-time listener
   useEffect(() => {
     setLoading(true);
     const colRef = collection(db, "landTitles");
-    const unsub = onSnapshot(colRef, (snap) => {
-      const list: SearchResult[] = [];
-      snap.forEach((d) => {
-        list.push(d.data() as SearchResult);
-      });
-      setRecords(list);
-      setLoading(false);
-    }, (err) => {
-      console.error("Failed to load title search indices:", err);
-      setLoading(false);
-    });
+    const unsub = onSnapshot(
+      colRef,
+      (snap) => {
+        const list: SearchResult[] = [];
+        snap.forEach((d) => {
+          list.push(d.data() as SearchResult);
+        });
+        setRecords(list);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Failed to load title search indices:", err);
+        setLoading(false);
+      },
+    );
 
     return () => unsub();
   }, []);
@@ -245,7 +349,10 @@ export const Search: React.FC = () => {
                               {item.surveyorId}
                             </span>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setSelectedRecord(item); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedRecord(item);
+                              }}
                               className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
                               title="View Details"
                             >
@@ -287,116 +394,339 @@ export const Search: React.FC = () => {
         </main>
       </div>
 
-      {/* Title Detail Modal */}
+      {/* Title Detail Modal — Enhanced */}
       {selectedRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden text-left border border-slate-200">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden text-left border border-slate-200 my-auto">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 sticky top-0 z-10">
               <div className="flex items-center space-x-3">
                 <Hash size={18} className="text-emerald-800" />
                 <div>
-                  <h3 className="font-bold text-slate-900">Title Record Details</h3>
-                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedRecord.titleId}</p>
+                  <h3 className="font-bold text-slate-900">
+                    Title Record Details
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                    {selectedRecord.titleId}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedRecord(null)}
-                className="text-slate-400 hover:bg-slate-200 hover:text-slate-700 px-3 py-1 rounded text-xs font-bold transition-colors"
+                className="text-slate-400 hover:bg-slate-200 hover:text-slate-700 p-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
-              <div className="grid grid-cols-2 gap-5">
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Title Number</span>
-                  <span className="font-mono font-extrabold text-slate-900 text-lg">{selectedRecord.titleNumber}</span>
+            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+              {/* === CLOA Title Summary Card === */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
+                <span className="text-[10px] uppercase font-extrabold tracking-widest text-emerald-800">
+                  Certificate of Land Ownership Award
+                </span>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                  <div>
+                    <span className="text-[9px] text-slate-500 uppercase block font-bold">
+                      Title #
+                    </span>
+                    <span className="font-mono font-extrabold text-slate-900 text-lg">
+                      {selectedRecord.titleNumber}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-500 uppercase block font-bold">
+                      Lot #
+                    </span>
+                    <span className="font-bold text-slate-900">
+                      {selectedRecord.lotNumber}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-500 uppercase block font-bold">
+                      Area
+                    </span>
+                    <span className="font-bold text-slate-900 flex items-center gap-1">
+                      <Layers size={14} className="text-emerald-700" />
+                      {selectedRecord.areaHectares} ha
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-500 uppercase block font-bold">
+                      Status
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                      <FileText size={10} />
+                      Active Title
+                    </span>
+                  </div>
                 </div>
-                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Beneficiary</span>
-                  <span className="font-extrabold text-slate-900 flex items-center">
-                    <User size={16} className="mr-1.5 text-indigo-600" />
+              </div>
+
+              {/* === Beneficiary Info === */}
+              <div className="bg-white border border-slate-200 rounded-xl p-5">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-4">
+                  <User size={14} className="text-indigo-600" />
+                  Beneficiary Details
+                </h4>
+                {detailLoading ? (
+                  <div className="text-xs text-slate-400 italic">
+                    Loading profile...
+                  </div>
+                ) : beneficiaryProfile ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <span className="text-[9px] text-slate-400 uppercase block font-bold">
+                        Name
+                      </span>
+                      <span className="font-bold text-slate-900">
+                        {beneficiaryProfile.name}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-slate-400 uppercase block font-bold">
+                        Contact
+                      </span>
+                      <span className="font-bold text-slate-900 flex items-center gap-1">
+                        <Phone size={12} className="text-slate-400" />
+                        {beneficiaryProfile.contact || "—"}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[9px] text-slate-400 uppercase block font-bold">
+                        Email
+                      </span>
+                      <span className="font-bold text-slate-900 flex items-center gap-1">
+                        <Mail size={12} className="text-slate-400" />
+                        {beneficiaryProfile.email || "—"}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[9px] text-slate-400 uppercase block font-bold">
+                        Address
+                      </span>
+                      <span className="font-bold text-slate-900">
+                        {beneficiaryProfile.address
+                          ? `${beneficiaryProfile.address}, `
+                          : ""}
+                        {beneficiaryProfile.barangay
+                          ? `${beneficiaryProfile.barangay}, `
+                          : ""}
+                        {beneficiaryProfile.municipality ||
+                          selectedRecord.municipality}
+                        {beneficiaryProfile.province
+                          ? `, ${beneficiaryProfile.province}`
+                          : ""}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 italic">
                     {selectedRecord.beneficiaryName}
-                  </span>
-                </div>
+                    <span className="text-slate-300 ml-1">
+                      (profile unavailable)
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Lot Number</span>
-                  <span className="font-bold text-slate-900">{selectedRecord.lotNumber}</span>
+              {/* === Location & Map === */}
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div className="p-5 pb-3">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin size={14} className="text-emerald-700" />
+                    Location &amp; Map View
+                  </h4>
                 </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Land Area</span>
-                  <span className="font-bold text-slate-900 flex items-center">
-                    <Layers size={16} className="mr-1.5 text-emerald-700" />
-                    {selectedRecord.areaHectares} Hectares
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-5">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Province</span>
-                  <span className="font-bold text-slate-900 flex items-center">
-                    <Globe size={16} className="mr-1.5 text-slate-500" />
+                <div className="px-5 pb-3 flex flex-wrap gap-4 text-sm">
+                  <span className="text-xs font-bold text-slate-500 flex items-center gap-1">
+                    <Globe size={12} />
+                    {selectedRecord.municipality},{" "}
                     {selectedRecord.province || "Negros Occidental"}
                   </span>
-                </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Municipality</span>
-                  <span className="font-bold text-slate-900 flex items-center">
-                    <MapPin size={16} className="mr-1.5 text-slate-500" />
-                    {selectedRecord.municipality}
+                  <span className="text-xs font-mono font-bold text-slate-500 flex items-center gap-1">
+                    <Compass size={12} />
+                    Lat: {selectedRecord.geoLat}, Lng: {selectedRecord.geoLng}
                   </span>
                 </div>
+                {selectedRecord.geoLat && selectedRecord.geoLng && (
+                  <div className="h-56 border-t border-slate-200">
+                    <MapContainer
+                      center={[
+                        parseFloat(selectedRecord.geoLat),
+                        parseFloat(selectedRecord.geoLng),
+                      ]}
+                      zoom={15}
+                      style={{ height: "100%", width: "100%" }}
+                      scrollWheelZoom={false}
+                      dragging={false}
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <Marker
+                        position={[
+                          parseFloat(selectedRecord.geoLat),
+                          parseFloat(selectedRecord.geoLng),
+                        ]}
+                        icon={defaultIcon}
+                      />
+                    </MapContainer>
+                  </div>
+                )}
               </div>
 
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">GPS Coordinates</span>
-                <div className="flex items-center space-x-4">
-                  <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
-                    <Compass size={14} className="inline mr-1 text-slate-400" />
-                    Lat: {selectedRecord.geoLat}
-                  </span>
-                  <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
-                    <Compass size={14} className="inline mr-1 text-slate-400" />
-                    Lng: {selectedRecord.geoLng}
-                  </span>
-                </div>
+              {/* === Land Photos Gallery === */}
+              {selectedRecord.landPhotos &&
+                selectedRecord.landPhotos.length > 0 && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-5">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-4">
+                      <Camera size={14} className="text-emerald-700" />
+                      Land Photos ({selectedRecord.landPhotos.length})
+                    </h4>
+                    <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                      {selectedRecord.landPhotos.map((src, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setPreviewPhoto(src)}
+                          className="aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-50 hover:ring-2 hover:ring-emerald-500 transition-all cursor-pointer"
+                        >
+                          <img
+                            src={src}
+                            alt={`Land photo ${i + 1}`}
+                            className="h-full w-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              {/* === Audit Trail === */}
+              <div className="bg-white border border-slate-200 rounded-xl p-5">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-4">
+                  <ClipboardList size={14} className="text-slate-500" />
+                  Application Audit Trail ({titleAuditLogs.length})
+                </h4>
+                {detailLoading ? (
+                  <div className="text-xs text-slate-400 italic">
+                    Loading logs...
+                  </div>
+                ) : titleAuditLogs.length === 0 ? (
+                  <div className="text-xs text-slate-400 italic">
+                    No audit logs for this application.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {titleAuditLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex items-start gap-3 p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs"
+                      >
+                        <Calendar
+                          size={12}
+                          className="text-slate-300 shrink-0 mt-0.5"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-700">
+                              {log.actor}
+                            </span>
+                            <span className="text-[9px] uppercase font-bold text-slate-400 bg-slate-200 px-1.5 py-0.5 rounded">
+                              {log.actorRole}
+                            </span>
+                            <span className="text-slate-300">·</span>
+                            <span className="text-slate-500">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 mt-0.5 text-slate-600">
+                            {log.oldStatus && (
+                              <>
+                                <span className="capitalize">
+                                  {log.oldStatus.replace(/_/g, " ")}
+                                </span>
+                                <ArrowRight
+                                  size={10}
+                                  className="text-slate-300"
+                                />
+                              </>
+                            )}
+                            <span className="font-bold capitalize">
+                              {log.newStatus.replace(/_/g, " ")}
+                            </span>
+                          </div>
+                          {log.notes && (
+                            <p className="text-slate-400 italic mt-0.5 truncate">
+                              "{log.notes}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Encoded By</span>
-                  <span className="font-bold text-slate-900 flex items-center">
-                    <FileText size={16} className="mr-1.5 text-slate-500" />
-                    {selectedRecord.surveyorId}
+              {/* === Encoded By Footer === */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <FileText size={14} className="text-slate-400" />
+                  <span className="text-xs text-slate-500">
+                    Encoded by{" "}
+                    <span className="font-bold text-slate-700">
+                      {selectedRecord.surveyorId}
+                    </span>
                   </span>
                 </div>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                  <span className="text-[10px] text-slate-500 uppercase block font-bold mb-1">Date Encoded</span>
-                  <span className="font-bold text-slate-900 flex items-center">
-                    <Calendar size={16} className="mr-1.5 text-slate-500" />
-                    {selectedRecord.encodedAt
-                      ? new Date(selectedRecord.encodedAt).toLocaleDateString("en-US", {
-                          day: "numeric", month: "short", year: "numeric",
-                        })
-                      : "—"}
-                  </span>
-                </div>
+                <span className="text-xs text-slate-400">
+                  {selectedRecord.encodedAt
+                    ? new Date(selectedRecord.encodedAt).toLocaleDateString(
+                        "en-US",
+                        {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        },
+                      )
+                    : "—"}
+                </span>
               </div>
             </div>
 
-            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-end">
+            <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-end sticky bottom-0">
               <button
                 onClick={() => setSelectedRecord(null)}
-                className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg text-xs font-bold transition-colors"
+                className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Lightbox */}
+      {previewPhoto && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div className="relative max-w-3xl max-h-[90vh]">
+            <img
+              src={previewPhoto}
+              alt="Land photo"
+              className="max-h-[85vh] max-w-full rounded-2xl shadow-2xl border border-white/20"
+            />
+            <button
+              onClick={() => setPreviewPhoto(null)}
+              className="absolute -top-3 -right-3 bg-slate-800 text-white rounded-full h-8 w-8 flex items-center justify-center shadow-lg hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
           </div>
         </div>
       )}

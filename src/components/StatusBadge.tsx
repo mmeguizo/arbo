@@ -2,7 +2,7 @@ import React from "react";
 
 export type ApplicationStatus =
   | "under_review"
-  | "pending"
+  | "forwarded_to_surveyor"
   | "verified"
   | "awarded"
   | "disputed";
@@ -14,13 +14,21 @@ interface StatusBadgeProps {
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
   const getStyles = () => {
     switch (status) {
+      case "forwarded_to_surveyor":
+        return {
+          bg: "bg-amber-50",
+          text: "text-amber-700",
+          border: "border-amber-200",
+          dot: "bg-amber-500",
+          label: "For Surveyor Processing",
+        };
       case "verified":
         return {
           bg: "bg-emerald-50",
           text: "text-emerald-700",
           border: "border-emerald-200",
           dot: "bg-emerald-500",
-          label: "Verified (Admin Approved)",
+          label: "Admin Approved",
         };
       case "awarded":
         return {
@@ -29,14 +37,6 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
           border: "border-blue-200",
           dot: "bg-blue-500",
           label: "Awarded (Title Encoded)",
-        };
-      case "pending":
-        return {
-          bg: "bg-amber-50",
-          text: "text-amber-700",
-          border: "border-amber-200",
-          dot: "bg-amber-500",
-          label: "Pending (Admin Stage)",
         };
       case "under_review":
         return {
