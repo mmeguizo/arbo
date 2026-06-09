@@ -354,7 +354,6 @@ export const MyGrants: React.FC = () => {
                           setExpandedGrant={setExpandedGrant}
                           showReportModal={showReportModal}
                           setShowReportModal={setShowReportModal}
-                          previewImage={previewImage}
                           setPreviewImage={setPreviewImage}
                         />
                       ))}
@@ -378,7 +377,6 @@ export const MyGrants: React.FC = () => {
                           setExpandedGrant={setExpandedGrant}
                           showReportModal={showReportModal}
                           setShowReportModal={setShowReportModal}
-                          previewImage={previewImage}
                           setPreviewImage={setPreviewImage}
                         />
                       ))}
@@ -404,7 +402,6 @@ export const MyGrants: React.FC = () => {
                             setExpandedGrant={setExpandedGrant}
                             showReportModal={showReportModal}
                             setShowReportModal={setShowReportModal}
-                            previewImage={previewImage}
                             setPreviewImage={setPreviewImage}
                           />
                         ),
