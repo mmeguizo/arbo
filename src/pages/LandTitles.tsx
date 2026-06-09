@@ -250,7 +250,6 @@ export const LandTitles: React.FC = () => {
   // Correction/Editing state
   const [isEditing, setIsEditing] = useState(false);
   const [existingTitleId, setExistingTitleId] = useState<string | null>(null);
-  const [editNotes, setEditNotes] = useState("");
   const [correctionApp, setCorrectionApp] = useState<{
     internalStatus?: string;
     internalNotes?: string;
@@ -345,7 +344,6 @@ export const LandTitles: React.FC = () => {
     setIsEditing(false);
     setExistingTitleId(null);
     setCorrectionApp(null);
-    setEditNotes("");
     setShowAssignExisting(false);
     setAssignExistingTitleId(null);
     setError(null);

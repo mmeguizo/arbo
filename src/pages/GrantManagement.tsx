@@ -26,7 +26,6 @@ import {
   MapPin,
   Eye,
   AlertCircle,
-  File,
   Building2,
 } from "lucide-react";
 
@@ -254,7 +253,6 @@ export const GrantManagement: React.FC = () => {
   const totalARBsWithGrants = new Set(grants.map((g) => g.beneficiaryId)).size;
   const overdueCount = grants.filter((g) => g.status === "overdue").length;
   const totalReports = reports.length;
-  const reviewedReports = reports.filter((r) => r.status === "reviewed").length;
 
   const currentYear = new Date().getFullYear();
   const monthlyGrantData = useMemo(() => {

@@ -10,11 +10,9 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot,
-  getDocs,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { uploadFile } from "../utils/storage";
-import { formatDate } from "../utils/formatters";
 import {
   Users,
   Building2,
@@ -25,7 +23,6 @@ import {
   Trash2,
   Upload,
   Check,
-  Search,
 } from "lucide-react";
 
 interface Cooperative {
@@ -146,9 +143,6 @@ export const CooperativeManagement: React.FC = () => {
 
   const getCoopMembers = (coopId: string) =>
     members.filter((m) => m.cooperativeId === coopId);
-
-  const getMemberCount = (coopId: string) =>
-    members.filter((m) => m.cooperativeId === coopId).length;
 
   // All municipalities that have at least one ARB
   const availableMunicipalities = useMemo(() => {

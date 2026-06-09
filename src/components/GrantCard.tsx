@@ -64,7 +64,6 @@ export const GrantCard: React.FC<{
   setExpandedGrant: (id: string | null) => void;
   showReportModal: string | null;
   setShowReportModal: (id: string | null) => void;
-  previewImage: string | null;
   setPreviewImage: (src: string | null) => void;
 }> = ({
   grant,
@@ -72,7 +71,6 @@ export const GrantCard: React.FC<{
   setExpandedGrant,
   showReportModal,
   setShowReportModal,
-  previewImage,
   setPreviewImage,
 }) => {
   const { user } = useAuth();
@@ -374,7 +372,7 @@ export const GrantCard: React.FC<{
                       <div className="flex gap-2 mt-2 flex-wrap">
                         {r.documents.map((doc, i) => (
                           <a
-                            key={i}
+                            key={i + r.id}
                             href={doc}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -605,7 +603,7 @@ export const GrantCard: React.FC<{
                   Upload Documents (PDF, spreadsheets, etc.)
                 </label>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {reportDocs.map((src, i) => (
+                  {reportDocs.map((_src, i) => (
                     <div
                       key={i}
                       className="relative inline-flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-600"
