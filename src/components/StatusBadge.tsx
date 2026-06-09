@@ -9,10 +9,31 @@ export type ApplicationStatus =
 
 interface StatusBadgeProps {
   status: ApplicationStatus;
+  correctionStatus?: string | null;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
+export const StatusBadge: React.FC<StatusBadgeProps> = ({
+  status,
+  correctionStatus,
+}) => {
   const getStyles = () => {
+    // Check for correction-returned overlay
+    if (
+      correctionStatus === "correction_surveyor" ||
+      correctionStatus === "correction_staff"
+    ) {
+      const isSurveyor = correctionStatus === "correction_surveyor";
+      return {
+        bg: "bg-red-50",
+        text: "text-red-700",
+        border: "border-red-200",
+        dot: "bg-red-500",
+        label: isSurveyor
+          ? "Returned to Surveyor (Correction)"
+          : "Returned to Staff (Correction)",
+      };
+    }
+
     switch (status) {
       case "forwarded_to_surveyor":
         return {

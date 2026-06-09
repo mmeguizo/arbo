@@ -4,6 +4,7 @@ import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 
 import { useAuth } from "../contexts/AuthContext";
+import { broadcastNotification } from "../contexts/NotificationContext";
 import { auth, db } from "../firebase/config";
 import { uploadFile, getDocumentPath } from "../utils/storage";
 import {
@@ -323,6 +324,15 @@ export const Register: React.FC = () => {
         notes: "",
         documents: uploadedDocuments,
       });
+
+      // Notify all staff members of the new application
+      await broadcastNotification(
+        "staff",
+        "submitted",
+        "New ARB Application Submitted",
+        `${name.trim()} from ${barangay.trim()}, ${municipality.trim()} has submitted a new application (${appRefId}) for review.`,
+        appRefId,
+      );
 
       await refreshProfile();
 

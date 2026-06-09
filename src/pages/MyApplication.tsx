@@ -1140,7 +1140,7 @@ export const MyApplication: React.FC = () => {
       {/* CLOA Certificate Modal */}
       {certificateTitle && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8 bg-slate-900/40 backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white print:block print:static print:z-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden text-left border border-slate-200 my-auto print:shadow-none print:border-none print:max-w-full print:my-0">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden text-left border border-slate-200 my-auto print:shadow-none print:border-none print:max-w-full print:my-0 print:rounded-none">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-900 text-white sticky top-0 z-10 print:hidden">
               <div className="flex items-center gap-3">
@@ -1162,45 +1162,83 @@ export const MyApplication: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto print:max-h-none print:overflow-visible">
-              {/* Certificate Hero */}
-              <div className="bg-gradient-to-br from-emerald-50 via-white to-amber-50 border-2 border-emerald-200 rounded-2xl p-8 text-center relative overflow-hidden print:border-4 print:border-emerald-800">
-                <div className="absolute inset-0 border-4 border-emerald-800/10 rounded-2xl pointer-events-none print:border-emerald-800"></div>
-                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-emerald-800 via-amber-500 to-emerald-800 print:h-2"></div>
+            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto print:max-h-none print:overflow-visible print:p-8">
+              {/* Certificate Plaque */}
+              <div className="bg-[#fdfcf8] border-4 border-emerald-800 rounded-none p-8 md:p-10 text-center relative print:border-4 print:border-emerald-900 print:bg-white print:p-10">
+                {/* Outer ornamental border */}
+                <div className="absolute inset-2 border-2 border-amber-400/40 pointer-events-none print:border-amber-400/60"></div>
 
-                <div className="h-16 w-16 rounded-full bg-emerald-800 flex items-center justify-center mx-auto mb-4 shadow-lg border-2 border-amber-400">
-                  <div className="text-center text-white">
-                    <p className="text-[8px] leading-3 font-extrabold tracking-wider">
-                      DAR
-                    </p>
-                    <p className="text-[6px] leading-3 font-semibold text-amber-300">
-                      PH
-                    </p>
+                {/* Top ornamental bar */}
+                <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-900 via-amber-500 to-emerald-900 print:h-2 print:from-emerald-900 print:via-amber-500 print:to-emerald-900"></div>
+                <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-900 via-amber-500 to-emerald-900 print:h-2"></div>
+
+                {/* DAR Logo centered */}
+                <div className="flex justify-center mb-4">
+                  <div className="h-20 w-20 rounded-full bg-white border-2 border-amber-400 flex items-center justify-center shadow-md overflow-hidden print:border-emerald-800">
+                    <img
+                      src="/dar_logo.png"
+                      alt="DAR Official Seal"
+                      className="h-full w-full object-contain p-1"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                        const parent = (e.target as HTMLImageElement)
+                          .parentElement;
+                        if (parent) {
+                          const fallback =
+                            parent.querySelector(".logo-fallback");
+                          if (fallback)
+                            (fallback as HTMLElement).style.display = "flex";
+                        }
+                      }}
+                    />
+                    <div className="logo-fallback hidden flex-col items-center justify-center text-center">
+                      <p className="text-[12px] leading-4 font-extrabold text-emerald-800">
+                        DAR
+                      </p>
+                      <p className="text-[10px] leading-3 font-semibold text-amber-500">
+                        PH
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                <h2 className="text-lg font-extrabold text-emerald-900 uppercase tracking-wide">
+                {/* Government Header */}
+                <p className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-[0.2em] mb-1">
                   Republic of the Philippines
-                </h2>
-                <p className="text-xs font-bold text-emerald-700 mt-1">
+                </p>
+                <h2 className="text-sm md:text-base font-extrabold text-emerald-800 uppercase tracking-wide">
                   Department of Agrarian Reform
-                </p>
-                <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest">
-                  Certificate of Land Ownership Award (CLOA)
+                </h2>
+                <p className="text-[9px] md:text-[10px] text-slate-500 mt-0.5 uppercase tracking-[0.15em] font-semibold">
+                  Negros Occidental & Oriental
                 </p>
 
-                <div className="w-24 h-0.5 bg-amber-400 mx-auto my-4"></div>
+                <div className="flex items-center justify-center gap-3 my-4">
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-400 to-amber-400"></div>
+                  <span className="text-[9px] font-extrabold text-amber-600 uppercase tracking-[0.25em]">
+                    Certificate of Land Ownership Award
+                  </span>
+                  <div className="h-px flex-1 bg-gradient-to-l from-transparent via-amber-400 to-amber-400"></div>
+                </div>
 
-                <p className="text-sm font-bold text-slate-700">
-                  This certifies that the parcel of land described below has
-                  been awarded to
+                <p className="text-xs md:text-sm text-slate-700 leading-relaxed max-w-lg mx-auto">
+                  This is to certify that the parcel of agricultural land
+                  described herein has been awarded in accordance with Republic
+                  Act No. 6657 (Comprehensive Agrarian Reform Law) to
                 </p>
-                <h3 className="text-xl font-extrabold text-emerald-900 mt-2 tracking-tight">
+
+                <h3 className="text-xl md:text-2xl font-serif font-extrabold text-emerald-900 mt-3 tracking-tight border-b-2 border-dotted border-amber-400 inline-block px-6 pb-2">
                   {certificateTitle.beneficiaryName || profile?.name}
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  As an Agrarian Reform Beneficiary (ARB) under the
-                  Comprehensive Agrarian Reform Program
+
+                <p className="text-[10px] md:text-xs text-slate-500 mt-3 leading-relaxed max-w-lg mx-auto">
+                  Herein referred to as an{" "}
+                  <span className="font-bold text-slate-700">
+                    Agrarian Reform Beneficiary (ARB)
+                  </span>
+                  , bearing the rights and obligations conferred by the
+                  Department of Agrarian Reform under the national agrarian
+                  reform program.
                 </p>
               </div>
 

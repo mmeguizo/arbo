@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { useNotifications } from "../contexts/NotificationContext";
+import {
+  useNotifications,
+  broadcastNotification,
+} from "../contexts/NotificationContext";
 import { Sidebar } from "../components/Sidebar";
 import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
 import {
@@ -83,6 +87,7 @@ export const ReviewApps: React.FC = () => {
   const [apps, setApps] = useState<Application[]>([]);
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [notesInput, setNotesInput] = useState("");
   const [internalNotesInput, setInternalNotesInput] = useState("");
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -92,7 +97,24 @@ export const ReviewApps: React.FC = () => {
   const [showReturnSurveyor, setShowReturnSurveyor] = useState(false);
   const [showReturnStaff, setShowReturnStaff] = useState(false);
 
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>("under_review");
+
+  // Read tab from query param on mount
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (
+      tabParam &&
+      [
+        "under_review",
+        "forwarded_to_surveyor",
+        "verified",
+        "resolved",
+      ].includes(tabParam)
+    ) {
+      setActiveTab(tabParam as TabKey);
+    }
+  }, [searchParams]);
 
   const [activePreviewDoc, setActivePreviewDoc] = useState<{
     title: string;
@@ -143,7 +165,7 @@ export const ReviewApps: React.FC = () => {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [refreshKey]);
 
   // Load audit logs when selected app changes
   useEffect(() => {
@@ -259,7 +281,7 @@ export const ReviewApps: React.FC = () => {
       // 🔔 NOTIFICATIONS
       if (profile.role === "staff" && newStatus === "forwarded_to_surveyor") {
         // Notify all surveyors
-        await writeNotification(
+        await broadcastNotification(
           "surveyor",
           "forwarded",
           "New Land for Surveyor Encoding",
@@ -474,11 +496,7 @@ export const ReviewApps: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setLoading(true);
-                // Force re-render which triggers onSnapshot refresh
-                setTimeout(() => setLoading(false), 100);
-              }}
+              onClick={() => setRefreshKey((k) => k + 1)}
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-[10px] font-bold px-2.5 py-1.5 transition-colors cursor-pointer"
               title="Refresh list"
             >
@@ -560,7 +578,10 @@ export const ReviewApps: React.FC = () => {
                             </span>
                           )}
                       </div>
-                      <StatusBadge status={item.status} />
+                      <StatusBadge
+                        status={item.status}
+                        correctionStatus={item.internalStatus}
+                      />
                     </div>
                     <p className="text-[10px] text-slate-400">ID: {item.id}</p>
                     <p className="text-[11px] text-slate-500 mt-1 truncate">
@@ -593,7 +614,10 @@ export const ReviewApps: React.FC = () => {
                       <h2 className="text-lg font-bold text-slate-900 m-0">
                         {selectedApp.userName}
                       </h2>
-                      <StatusBadge status={selectedApp.status} />
+                      <StatusBadge
+                        status={selectedApp.status}
+                        correctionStatus={selectedApp.internalStatus}
+                      />
                     </div>
                     <p className="text-xs text-slate-400">
                       Ref:{" "}

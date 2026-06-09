@@ -32,6 +32,9 @@ import {
   RotateCcw,
   Search,
   Edit,
+  PlusCircle,
+  UserCheck,
+  Landmark,
 } from "lucide-react";
 import {
   MapContainer,
@@ -57,9 +60,9 @@ interface ApprovedApplicant {
 
 interface ExistingTitle {
   titleId: string;
-  applicationId: string;
-  beneficiaryId: string;
-  beneficiaryName: string;
+  applicationId: string | null;
+  beneficiaryId: string | null;
+  beneficiaryName: string | null;
   titleNumber: string;
   lotNumber: string;
   areaHectares: number;
@@ -72,6 +75,7 @@ interface ExistingTitle {
   landPhotos?: string[];
   internalStatus?: string;
   internalNotes?: string;
+  status?: string; // "unassigned" | "assigned" | "awarded"
 }
 
 const PAGE_SIZE = 20;
@@ -103,7 +107,14 @@ const SearchableBeneficiarySelect: React.FC<{
   selectedAppId: string;
   onSelect: (id: string) => void;
   totalCount: number;
-}> = ({ applicants, selectedAppId, onSelect, totalCount }) => {
+  placeholder?: string;
+}> = ({
+  applicants,
+  selectedAppId,
+  onSelect,
+  totalCount,
+  placeholder = "Search beneficiary name, barangay, or ID...",
+}) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const dropdownRef = React.useRef<HTMLDivElement>(null);
@@ -153,7 +164,7 @@ const SearchableBeneficiarySelect: React.FC<{
             if (!open) setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder="Search beneficiary name, barangay, or ID..."
+          placeholder={placeholder}
           className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
         />
         <button
@@ -169,7 +180,7 @@ const SearchableBeneficiarySelect: React.FC<{
         <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
           {filtered.length === 0 ? (
             <div className="px-4 py-6 text-center text-xs text-slate-400 italic">
-              No beneficiaries match your search.
+              No matches found.
             </div>
           ) : (
             filtered.map((appItem) => {
@@ -212,9 +223,12 @@ const SearchableBeneficiarySelect: React.FC<{
   );
 };
 
+type ActiveMode = "assign" | "unassigned";
+
 export const LandTitles: React.FC = () => {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const [activeMode, setActiveMode] = useState<ActiveMode>("assign");
   const [applicants, setApprovedApplicants] = useState<ApprovedApplicant[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
@@ -223,7 +237,7 @@ export const LandTitles: React.FC = () => {
   const [allApplicants, setAllApplicants] = useState<ApprovedApplicant[]>([]);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Form Fields
+  // Form Fields (shared)
   const [selectedAppId, setSelectedAppId] = useState("");
   const [titleNumber, setTitleNumber] = useState("");
   const [lotNumber, setLotNumber] = useState("");
@@ -241,6 +255,13 @@ export const LandTitles: React.FC = () => {
     internalStatus?: string;
     internalNotes?: string;
   } | null>(null);
+
+  // Assign-existing-title state
+  const [showAssignExisting, setShowAssignExisting] = useState(false);
+  const [unassignedTitles, setUnassignedTitles] = useState<ExistingTitle[]>([]);
+  const [assignExistingTitleId, setAssignExistingTitleId] = useState<
+    string | null
+  >(null);
 
   // Map & photo state
   const [mapCenter, setMapCenter] = useState<[number, number]>([
@@ -309,17 +330,36 @@ export const LandTitles: React.FC = () => {
       []
     : [];
 
+  // Reset form
+  const resetForm = () => {
+    setSelectedAppId("");
+    setTitleNumber("");
+    setLotNumber("");
+    setAreaHectares("");
+    setGeoLat("");
+    setGeoLng("");
+    setProvince("");
+    setMunicipality("");
+    setPendingPhotoFiles([]);
+    setPhotoPreviews([]);
+    setIsEditing(false);
+    setExistingTitleId(null);
+    setCorrectionApp(null);
+    setEditNotes("");
+    setShowAssignExisting(false);
+    setAssignExistingTitleId(null);
+    setError(null);
+  };
+
   const fetchApprovedApplicants = async () => {
     try {
       setLoading(true);
-      // Get all forwarded_to_surveyor apps (both new and correction-needed)
       const q = query(
         collection(db, "applications"),
         where("status", "==", "forwarded_to_surveyor"),
       );
       const snap = await getDocs(q);
 
-      // Get all existing land titles
       const titleSnap = await getDocs(collection(db, "landTitles"));
       const encodedIds = new Set<string>();
       const existingTitles: Record<string, ExistingTitle> = {};
@@ -336,7 +376,6 @@ export const LandTitles: React.FC = () => {
         const data = d.data();
         const submittedAt = data.submittedAt || "";
         const internalStatus = data.internalStatus || "";
-        // Include apps that don't have titles yet, OR have correction_surveyor status
         if (!encodedIds.has(d.id) || internalStatus === "correction_surveyor") {
           list.push({
             id: d.id,
@@ -358,13 +397,11 @@ export const LandTitles: React.FC = () => {
       setTotalCount(list.length);
       setApprovedApplicants(list.slice(0, PAGE_SIZE));
 
-      if (list.length > 0) {
+      if (list.length > 0 && activeMode === "assign") {
         const firstId = list[0].id;
         setSelectedAppId(firstId);
-        // Check if first app needs editing (has existing title for correction)
         if (existingTitles[firstId]) {
           const ext = existingTitles[firstId];
-          // Pre-fill form with existing data
           setTitleNumber(ext.titleNumber || "");
           setLotNumber(ext.lotNumber || "");
           setAreaHectares(String(ext.areaHectares || ""));
@@ -389,28 +426,55 @@ export const LandTitles: React.FC = () => {
     }
   };
 
+  // Fetch unassigned titles for assign-existing dropdown
+  const fetchUnassignedTitles = async () => {
+    try {
+      const q = query(
+        collection(db, "landTitles"),
+        where("status", "==", "unassigned"),
+      );
+      const snap = await getDocs(q);
+      const list: ExistingTitle[] = [];
+      snap.forEach((d) => {
+        list.push({ titleId: d.id, ...d.data() } as ExistingTitle);
+      });
+      setUnassignedTitles(list);
+    } catch (err) {
+      console.error("Failed to load unassigned titles:", err);
+    }
+  };
+
   useEffect(() => {
     fetchApprovedApplicants();
-  }, []);
+    fetchUnassignedTitles();
+  }, [activeMode]);
+
+  // Handle assigning an existing unassigned title
+  const handleAssignExisting = async (titleId: string) => {
+    const title = unassignedTitles.find((t) => t.titleId === titleId);
+    if (!title) return;
+    setAssignExistingTitleId(titleId);
+    // Pre-fill form with existing title data
+    setTitleNumber(title.titleNumber || "");
+    setLotNumber(title.lotNumber || "");
+    setAreaHectares(String(title.areaHectares || ""));
+    setGeoLat(title.geoLat || "");
+    setGeoLng(title.geoLng || "");
+    setProvince(title.province || "");
+    setMunicipality(title.municipality || "");
+    if (title.landPhotos && title.landPhotos.length > 0) {
+      setPhotoPreviews([...title.landPhotos]);
+    }
+    setIsEditing(true);
+    setExistingTitleId(titleId);
+  };
 
   // When selecting an app, check if we need to enter edit mode
   const handleSelectApp = async (appId: string) => {
     setSelectedAppId(appId);
-    // Reset form
-    setIsEditing(false);
-    setExistingTitleId(null);
-    setCorrectionApp(null);
-    setEditNotes("");
-    setTitleNumber("");
-    setLotNumber("");
-    setAreaHectares("");
-    setGeoLat("");
-    setGeoLng("");
-    setProvince("");
-    setMunicipality("");
-    setPendingPhotoFiles([]);
+    resetForm();
+    setAssignExistingTitleId(null);
     setPhotoPreviews([]);
-    setError(null);
 
     // Look up existing land title for this app
     try {
@@ -421,7 +485,6 @@ export const LandTitles: React.FC = () => {
         const data = d.data() as ExistingTitle;
         if (data.applicationId === appId) {
           foundTitleId = d.id;
-          // Store properties individually
           existingRows.titleNumber = data.titleNumber || "";
           existingRows.lotNumber = data.lotNumber || "";
           existingRows.areaHectares = String(data.areaHectares || "");
@@ -435,7 +498,6 @@ export const LandTitles: React.FC = () => {
         }
       });
 
-      // Also get app's internal correction info
       const { getDoc: gd } = await import("firebase/firestore");
       const appDoc = await gd(doc(db, "applications", appId));
       const appData = appDoc.data();
@@ -468,7 +530,6 @@ export const LandTitles: React.FC = () => {
     setSubmitted(false);
 
     if (
-      !selectedAppId ||
       !titleNumber ||
       !lotNumber ||
       !areaHectares ||
@@ -481,12 +542,18 @@ export const LandTitles: React.FC = () => {
       return;
     }
 
+    // For beneficiary mode, require beneficiary
+    if (activeMode === "assign" && !selectedAppId && !assignExistingTitleId) {
+      setError("Please select a beneficiary to assign this title to.");
+      return;
+    }
+
     const cleanTitle = titleNumber.trim().toUpperCase();
 
     try {
       setLoading(true);
 
-      // Duplicate check (skip for edits of same title)
+      // Duplicate check (skip for edits)
       if (!isEditing) {
         const allTitlesSnap = await getDocs(collection(db, "landTitles"));
         const isDuplicate = allTitlesSnap.docs.some(
@@ -496,28 +563,16 @@ export const LandTitles: React.FC = () => {
         );
         if (isDuplicate) {
           setError(
-            `CRITICAL WARNING: The Land Title ID: '${cleanTitle}' is already registered in our database! Double registration is blocked.`,
+            `CRITICAL WARNING: The Land Title ID: '${cleanTitle}' is already registered in our database!`,
           );
           setLoading(false);
           return;
         }
       }
 
-      const selectedAppRecord = allApplicants.find(
-        (a) => a.id === selectedAppId,
-      );
-      if (!selectedAppRecord) {
-        setError("Invalid applicant selected.");
-        setLoading(false);
-        return;
-      }
-
-      // Upload land photos to Firebase Storage
+      // Upload land photos
       const photoUrls: string[] = [];
-      // Keep existing photo URLs that weren't removed
       if (isEditing && photoPreviews.length > 0) {
-        // For simplicity, if user uploaded new photos alongside existing ones, we try to
-        // keep existing URLs and only upload new files
         const existingUrls = photoPreviews.filter(
           (p) => !p.startsWith("blob:"),
         );
@@ -536,125 +591,259 @@ export const LandTitles: React.FC = () => {
         }
       }
 
-      if (isEditing && existingTitleId) {
-        // UPDATE existing land title
-        const titleRef = doc(db, "landTitles", existingTitleId);
-        await updateDoc(titleRef, {
-          titleNumber: cleanTitle,
-          lotNumber: lotNumber.trim(),
-          areaHectares: Number(areaHectares),
-          province: province,
-          municipality: municipality,
-          geoLat: geoLat.trim(),
-          geoLng: geoLng.trim(),
-          surveyorId: profile?.name || "Surveyor Officer",
-          encodedAt: new Date().toISOString(),
-          ...(photoUrls.length > 0 ? { landPhotos: photoUrls } : {}),
-        });
+      // === UNASSIGNED MODE ===
+      if (activeMode === "unassigned") {
+        if (isEditing && existingTitleId) {
+          const titleRef = doc(db, "landTitles", existingTitleId);
+          await updateDoc(titleRef, {
+            titleNumber: cleanTitle,
+            lotNumber: lotNumber.trim(),
+            areaHectares: Number(areaHectares),
+            province,
+            municipality,
+            geoLat: geoLat.trim(),
+            geoLng: geoLng.trim(),
+            surveyorId: profile?.name || "Surveyor Officer",
+            encodedAt: new Date().toISOString(),
+            ...(photoUrls.length > 0 ? { landPhotos: photoUrls } : {}),
+          });
 
-        // Update application: resolve correction
-        const appDocRef = doc(db, "applications", selectedAppRecord.id);
-        await updateDoc(appDocRef, {
-          status: "verified",
-          internalStatus: "ok",
-          internalNotes: "",
-          internalAssignedTo: null,
-          internalAssignedRole: null,
-          surveyorEncodedAt: new Date().toISOString(),
-          surveyorName: profile?.name || "Surveyor Officer",
-          titleNumber: cleanTitle,
-        });
+          await addDoc(collection(db, "auditLogs"), {
+            applicationId: null,
+            timestamp: new Date().toISOString(),
+            actor: profile?.name || "Surveyor",
+            actorRole: "surveyor",
+            action: "unassigned_title_updated",
+            oldStatus: "unassigned",
+            newStatus: "unassigned",
+            notes: `Updated unassigned title ${cleanTitle} — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
+          });
+        } else {
+          const generatedTitleId = `TTL-${Math.floor(100000 + Math.random() * 900000)}`;
 
-        await addDoc(collection(db, "auditLogs"), {
-          applicationId: selectedAppRecord.id,
-          timestamp: new Date().toISOString(),
-          actor: profile?.name || "Surveyor",
-          actorRole: "surveyor",
-          action: "land_edited",
-          oldStatus: "forwarded_to_surveyor",
-          newStatus: "verified",
-          notes: `Land title ${cleanTitle} corrected — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}. ${editNotes ? `Notes: ${editNotes}` : ""}`,
-        });
+          await setDoc(doc(db, "landTitles", generatedTitleId), {
+            titleId: generatedTitleId,
+            applicationId: null,
+            beneficiaryId: null,
+            beneficiaryName: null,
+            titleNumber: cleanTitle,
+            lotNumber: lotNumber.trim(),
+            areaHectares: Number(areaHectares),
+            province,
+            municipality,
+            geoLat: geoLat.trim(),
+            geoLng: geoLng.trim(),
+            surveyorId: profile?.name || "Surveyor Officer",
+            encodedAt: new Date().toISOString(),
+            landPhotos: photoUrls,
+            status: "unassigned",
+          });
 
-        await broadcastNotification(
-          "admin",
-          "correction_resolved",
-          "Land Title Correction Resolved",
-          `Surveyor ${profile?.name} corrected title ${cleanTitle} for ${selectedAppRecord.userName}. Ready for admin review.`,
-          selectedAppRecord.id,
-        );
-
-        setSubmittedTitle(cleanTitle);
-        setSubmitted(true);
-      } else {
-        // CREATE new land title
-        const generatedTitleId = `TTL-${Math.floor(100000 + Math.random() * 900000)}`;
-
-        await setDoc(doc(db, "landTitles", generatedTitleId), {
-          titleId: generatedTitleId,
-          applicationId: selectedAppRecord.id,
-          beneficiaryId: selectedAppRecord.userId,
-          beneficiaryName: selectedAppRecord.userName,
-          titleNumber: cleanTitle,
-          lotNumber: lotNumber.trim(),
-          areaHectares: Number(areaHectares),
-          province: province,
-          municipality: municipality,
-          geoLat: geoLat.trim(),
-          geoLng: geoLng.trim(),
-          surveyorId: profile?.name || "Surveyor Officer",
-          encodedAt: new Date().toISOString(),
-          landPhotos: photoUrls,
-        });
-
-        const appDocRef = doc(db, "applications", selectedAppRecord.id);
-        await updateDoc(appDocRef, {
-          status: "verified",
-          surveyorEncodedAt: new Date().toISOString(),
-          surveyorName: profile?.name || "Surveyor Officer",
-          titleNumber: cleanTitle,
-        });
-
-        await addDoc(collection(db, "auditLogs"), {
-          applicationId: selectedAppRecord.id,
-          timestamp: new Date().toISOString(),
-          actor: profile?.name || "Surveyor",
-          actorRole: "surveyor",
-          action: "land_encoded",
-          oldStatus: "forwarded_to_surveyor",
-          newStatus: "verified",
-          notes: `Land title ${cleanTitle} encoded — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
-        });
-
-        await broadcastNotification(
-          "admin",
-          "encoded",
-          "Land Title Encoded — Ready for Admin Approval",
-          `Surveyor ${profile?.name} encoded title ${cleanTitle} for ${selectedAppRecord.userName} (${selectedAppRecord.id}).`,
-        );
+          await addDoc(collection(db, "auditLogs"), {
+            applicationId: null,
+            timestamp: new Date().toISOString(),
+            actor: profile?.name || "Surveyor",
+            actorRole: "surveyor",
+            action: "unassigned_title_created",
+            oldStatus: null,
+            newStatus: "unassigned",
+            notes: `Surveyed unassigned land title ${cleanTitle} — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
+          });
+        }
 
         setSubmittedTitle(cleanTitle);
         setSubmitted(true);
       }
+      // === ASSIGN (BENEFICIARY) MODE ===
+      else {
+        // If assigning an existing unassigned title
+        if (assignExistingTitleId) {
+          const selectedAppRecord = allApplicants.find(
+            (a) => a.id === selectedAppId,
+          );
+          if (!selectedAppRecord) {
+            setError("Invalid applicant selected.");
+            setLoading(false);
+            return;
+          }
+
+          const titleRef = doc(db, "landTitles", assignExistingTitleId);
+          await updateDoc(titleRef, {
+            applicationId: selectedAppRecord.id,
+            beneficiaryId: selectedAppRecord.userId,
+            beneficiaryName: selectedAppRecord.userName,
+            titleNumber: cleanTitle,
+            lotNumber: lotNumber.trim(),
+            areaHectares: Number(areaHectares),
+            province,
+            municipality,
+            geoLat: geoLat.trim(),
+            geoLng: geoLng.trim(),
+            surveyorId: profile?.name || "Surveyor Officer",
+            encodedAt: new Date().toISOString(),
+            status: "assigned",
+            ...(photoUrls.length > 0 ? { landPhotos: photoUrls } : {}),
+          });
+
+          const appDocRef = doc(db, "applications", selectedAppRecord.id);
+          await updateDoc(appDocRef, {
+            status: "verified",
+            internalStatus: "ok",
+            internalNotes: "",
+            internalAssignedTo: null,
+            internalAssignedRole: null,
+            surveyorEncodedAt: new Date().toISOString(),
+            surveyorName: profile?.name || "Surveyor Officer",
+            titleNumber: cleanTitle,
+          });
+
+          await addDoc(collection(db, "auditLogs"), {
+            applicationId: selectedAppRecord.id,
+            timestamp: new Date().toISOString(),
+            actor: profile?.name || "Surveyor",
+            actorRole: "surveyor",
+            action: "title_assigned",
+            oldStatus: "unassigned",
+            newStatus: "verified",
+            notes: `Assigned unassigned title ${cleanTitle} to ${selectedAppRecord.userName}`,
+          });
+
+          await broadcastNotification(
+            "admin",
+            "encoded",
+            "Land Title Assigned — Ready for Admin Review",
+            `Surveyor ${profile?.name} assigned title ${cleanTitle} to ${selectedAppRecord.userName} (${selectedAppRecord.id}).`,
+            selectedAppRecord.id,
+          );
+
+          setSubmittedTitle(cleanTitle);
+          setSubmitted(true);
+        }
+        // Editing existing assigned title (correction)
+        else if (isEditing && existingTitleId) {
+          const titleRef = doc(db, "landTitles", existingTitleId);
+          await updateDoc(titleRef, {
+            titleNumber: cleanTitle,
+            lotNumber: lotNumber.trim(),
+            areaHectares: Number(areaHectares),
+            province,
+            municipality,
+            geoLat: geoLat.trim(),
+            geoLng: geoLng.trim(),
+            surveyorId: profile?.name || "Surveyor Officer",
+            encodedAt: new Date().toISOString(),
+            ...(photoUrls.length > 0 ? { landPhotos: photoUrls } : {}),
+          });
+
+          const selectedAppRecord = allApplicants.find(
+            (a) => a.id === selectedAppId,
+          );
+          if (selectedAppRecord) {
+            const appDocRef = doc(db, "applications", selectedAppRecord.id);
+            await updateDoc(appDocRef, {
+              status: "verified",
+              internalStatus: "ok",
+              internalNotes: "",
+              internalAssignedTo: null,
+              internalAssignedRole: null,
+              surveyorEncodedAt: new Date().toISOString(),
+              surveyorName: profile?.name || "Surveyor Officer",
+              titleNumber: cleanTitle,
+            });
+          }
+
+          await addDoc(collection(db, "auditLogs"), {
+            applicationId: selectedAppRecord?.id || null,
+            timestamp: new Date().toISOString(),
+            actor: profile?.name || "Surveyor",
+            actorRole: "surveyor",
+            action: "land_edited",
+            oldStatus: "forwarded_to_surveyor",
+            newStatus: "verified",
+            notes: `Land title ${cleanTitle} corrected — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
+          });
+
+          await broadcastNotification(
+            "admin",
+            "correction_resolved",
+            "Land Title Correction Resolved",
+            `Surveyor ${profile?.name} corrected title ${cleanTitle} for ${selectedAppRecord?.userName || "beneficiary"}. Ready for admin review.`,
+            selectedAppRecord?.id || null,
+          );
+
+          setSubmittedTitle(cleanTitle);
+          setSubmitted(true);
+        }
+        // Create new assigned title
+        else {
+          const selectedAppRecord = allApplicants.find(
+            (a) => a.id === selectedAppId,
+          );
+          if (!selectedAppRecord) {
+            setError("Invalid applicant selected.");
+            setLoading(false);
+            return;
+          }
+
+          const generatedTitleId = `TTL-${Math.floor(100000 + Math.random() * 900000)}`;
+
+          await setDoc(doc(db, "landTitles", generatedTitleId), {
+            titleId: generatedTitleId,
+            applicationId: selectedAppRecord.id,
+            beneficiaryId: selectedAppRecord.userId,
+            beneficiaryName: selectedAppRecord.userName,
+            titleNumber: cleanTitle,
+            lotNumber: lotNumber.trim(),
+            areaHectares: Number(areaHectares),
+            province,
+            municipality,
+            geoLat: geoLat.trim(),
+            geoLng: geoLng.trim(),
+            surveyorId: profile?.name || "Surveyor Officer",
+            encodedAt: new Date().toISOString(),
+            landPhotos: photoUrls,
+            status: "assigned",
+          });
+
+          const appDocRef = doc(db, "applications", selectedAppRecord.id);
+          await updateDoc(appDocRef, {
+            status: "verified",
+            surveyorEncodedAt: new Date().toISOString(),
+            surveyorName: profile?.name || "Surveyor Officer",
+            titleNumber: cleanTitle,
+          });
+
+          await addDoc(collection(db, "auditLogs"), {
+            applicationId: selectedAppRecord.id,
+            timestamp: new Date().toISOString(),
+            actor: profile?.name || "Surveyor",
+            actorRole: "surveyor",
+            action: "land_encoded",
+            oldStatus: "forwarded_to_surveyor",
+            newStatus: "verified",
+            notes: `Land title ${cleanTitle} encoded — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
+          });
+
+          await broadcastNotification(
+            "admin",
+            "encoded",
+            "Land Title Encoded — Ready for Admin Approval",
+            `Surveyor ${profile?.name} encoded title ${cleanTitle} for ${selectedAppRecord.userName} (${selectedAppRecord.id}).`,
+          );
+
+          setSubmittedTitle(cleanTitle);
+          setSubmitted(true);
+        }
+      }
 
       await fetchApprovedApplicants();
+      await fetchUnassignedTitles();
     } catch (err) {
-      console.error("Failed to save land title mapping:", err);
+      console.error("Failed to save land title:", err);
       const firebaseErr = err as { code?: string; message?: string };
       if (firebaseErr.code === "permission-denied") {
         setError(
           "Permission denied. Your account may not have write access. Contact your admin.",
-        );
-      } else if (
-        firebaseErr.code?.includes("unavailable") ||
-        firebaseErr.code?.includes("deadline-exceeded")
-      ) {
-        setError(
-          "Database is temporarily unavailable. Please check your connection and try again.",
-        );
-      } else if (firebaseErr.code === "not-found") {
-        setError(
-          "The database collection could not be found. Make sure Firestore is enabled.",
         );
       } else {
         setError(
@@ -683,16 +872,60 @@ export const LandTitles: React.FC = () => {
         </header>
 
         <main className="p-8 max-w-4xl space-y-6">
+          {/* Mode Tabs */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setActiveMode("assign");
+                resetForm();
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                activeMode === "assign"
+                  ? "bg-emerald-800 text-white border-emerald-800 shadow-md"
+                  : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              <UserCheck size={14} />
+              Assign to Beneficiary
+            </button>
+            <button
+              onClick={() => {
+                setActiveMode("unassigned");
+                resetForm();
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                activeMode === "unassigned"
+                  ? "bg-emerald-800 text-white border-emerald-800 shadow-md"
+                  : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              <Landmark size={14} />
+              Unassigned Survey
+            </button>
+          </div>
+
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-left">
             <h2 className="text-lg font-bold text-slate-900 mb-2">
-              {isEditing
-                ? "Edit & Correct Land Parcel"
-                : "Encode New Verified Land Parcel"}
+              {activeMode === "assign"
+                ? isEditing
+                  ? "Edit & Correct Land Parcel"
+                  : assignExistingTitleId
+                    ? "Assign Existing Land Title"
+                    : "Encode New Verified Land Parcel"
+                : isEditing
+                  ? "Edit Unassigned Survey"
+                  : "New Unassigned Land Survey"}
             </h2>
             <p className="text-slate-500 text-xs leading-relaxed mb-6">
-              {isEditing
-                ? "Admin has requested corrections to the land title below. Update the fields as needed and resubmit."
-                : "Applications forwarded by staff for surveyor processing. Encode land parcel details here — they will then be routed for Admin approval."}
+              {activeMode === "assign"
+                ? isEditing
+                  ? "Update the land title fields as needed and resubmit."
+                  : assignExistingTitleId
+                    ? "Assign a previously surveyed unassigned land title to this beneficiary."
+                    : "Select a beneficiary application forwarded by staff. Encode land parcel details here — they will then be routed for Admin approval."
+                : isEditing
+                  ? "Update the unassigned land survey data."
+                  : "Survey a new land parcel without assigning a beneficiary yet. Fill in all geographic details and upload photos. The title will be stored as unassigned and available for later assignment."}
             </p>
 
             {submitted && (
@@ -702,13 +935,18 @@ export const LandTitles: React.FC = () => {
                   <div>
                     <span className="font-bold block">
                       Title {submittedTitle} —{" "}
-                      {isEditing
-                        ? "Corrected & Updated!"
-                        : "Registered & Locked!"}
+                      {activeMode === "unassigned"
+                        ? "Surveyed & Saved!"
+                        : isEditing
+                          ? "Corrected & Updated!"
+                          : assignExistingTitleId
+                            ? "Assigned & Locked!"
+                            : "Registered & Locked!"}
                     </span>
                     <span className="text-xs text-emerald-700 mt-1 block">
-                      The land title has been encoded and is now queued for
-                      Admin approval.
+                      {activeMode === "unassigned"
+                        ? "The unassigned land title has been saved and can be assigned to a beneficiary later."
+                        : "The land title has been encoded and is now queued for Admin approval."}
                     </span>
                   </div>
                 </div>
@@ -718,24 +956,16 @@ export const LandTitles: React.FC = () => {
                     onClick={() => {
                       setSubmitted(false);
                       setSubmittedTitle("");
-                      setTitleNumber("");
-                      setLotNumber("");
-                      setAreaHectares("");
-                      setGeoLat("");
-                      setGeoLng("");
-                      setProvince("");
-                      setMunicipality("");
-                      setPendingPhotoFiles([]);
-                      setPhotoPreviews([]);
-                      setIsEditing(false);
-                      setExistingTitleId(null);
-                      setCorrectionApp(null);
-                      setEditNotes("");
+                      resetForm();
                     }}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-900 text-white py-2 px-4 text-xs font-bold transition-all cursor-pointer"
                   >
                     <RotateCcw size={14} />
-                    <span>Encode Another Title</span>
+                    <span>
+                      {activeMode === "unassigned"
+                        ? "Survey Another"
+                        : "Encode Another Title"}
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -778,34 +1008,95 @@ export const LandTitles: React.FC = () => {
 
             {loading && allApplicants.length === 0 && !submitted ? (
               <div className="py-8 text-center text-slate-400 italic text-xs">
-                Scanning eligible applications...
+                Scanning records...
               </div>
-            ) : allApplicants.length === 0 && !submitted ? (
+            ) : activeMode === "assign" &&
+              allApplicants.length === 0 &&
+              !submitted ? (
               <div className="py-8 border border-dashed border-slate-250 rounded-2xl text-center text-slate-400 italic text-xs bg-slate-50/40">
                 No applications have been forwarded for surveyor processing yet.
                 Staff must forward applications from the review stage first.
               </div>
             ) : submitted ? null : (
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="relative">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                    Select Approved Beneficiary
-                  </label>
-                  <SearchableBeneficiarySelect
-                    applicants={
-                      allApplicants.length > 0 ? allApplicants : applicants
-                    }
-                    selectedAppId={selectedAppId}
-                    onSelect={handleSelectApp}
-                    totalCount={totalCount}
-                  />
-                  {isEditing && (
-                    <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">
-                      <Edit size={10} />
-                      Editing existing title
-                    </span>
-                  )}
-                </div>
+                {/* Beneficiary select — only in assign mode */}
+                {activeMode === "assign" && (
+                  <>
+                    <div className="relative">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                        Select Beneficiary
+                      </label>
+                      <SearchableBeneficiarySelect
+                        applicants={
+                          allApplicants.length > 0 ? allApplicants : applicants
+                        }
+                        selectedAppId={selectedAppId}
+                        onSelect={handleSelectApp}
+                        totalCount={totalCount}
+                      />
+                      {(isEditing || assignExistingTitleId) && (
+                        <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">
+                          <Edit size={10} />
+                          {assignExistingTitleId
+                            ? "Assigning existing title"
+                            : "Editing existing title"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Assign Existing Title Collapsible */}
+                    {!assignExistingTitleId && !isEditing && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAssignExisting(!showAssignExisting);
+                            if (!showAssignExisting) fetchUnassignedTitles();
+                          }}
+                          className="inline-flex items-center gap-1.5 text-[10px] font-bold text-slate-500 hover:text-emerald-700 transition-colors cursor-pointer"
+                        >
+                          <PlusCircle size={12} />
+                          {showAssignExisting
+                            ? "Hide"
+                            : "Or assign an existing unassigned land title..."}
+                        </button>
+                        {showAssignExisting && (
+                          <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                            <p className="text-[10px] text-amber-700 mb-2 font-semibold">
+                              Select an unassigned title to assign to the
+                              selected beneficiary:
+                            </p>
+                            {unassignedTitles.length === 0 ? (
+                              <p className="text-[10px] text-slate-400 italic">
+                                No unassigned titles available.
+                              </p>
+                            ) : (
+                              <select
+                                value={assignExistingTitleId || ""}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleAssignExisting(e.target.value);
+                                  }
+                                }}
+                                className="w-full rounded-lg border border-amber-300 bg-white py-2 px-3 text-xs font-semibold text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              >
+                                <option value="">
+                                  -- Select unassigned title --
+                                </option>
+                                {unassignedTitles.map((t) => (
+                                  <option key={t.titleId} value={t.titleId}>
+                                    {t.titleNumber} — {t.areaHectares}ha, Lot{" "}
+                                    {t.lotNumber}, {t.municipality}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
@@ -1001,86 +1292,73 @@ export const LandTitles: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Land Photos Upload */}
+                {/* Land Photos */}
                 <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                   <div className="text-xs font-bold text-slate-600 flex items-center space-x-1.5 mb-3">
                     <Camera size={16} className="text-emerald-800" />
-                    <span>Land Photos (Optional)</span>
-                  </div>
-                  <label className="flex items-center justify-center gap-2 border border-dashed border-slate-300 rounded-xl py-4 cursor-pointer hover:bg-white transition-colors">
-                    <Upload size={16} className="text-slate-400" />
-                    <span className="text-xs text-slate-500">
-                      Upload land photos (JPG, PNG)
+                    <span>Land Photos</span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      Upload photos of the surveyed land
                     </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
-                  </label>
-                  {photoPreviews.length > 0 && (
-                    <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mt-3">
-                      {photoPreviews.map((src, i) => (
-                        <div
-                          key={i}
-                          className="relative group rounded-lg overflow-hidden border border-slate-200 h-24"
-                        >
-                          <img
-                            src={src}
-                            className="h-full w-full object-cover"
-                            alt={`Land photo ${i + 1}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(i)}
-                            className="absolute top-1 right-1 bg-red-600 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Correction notes (editing mode) */}
-                {isEditing && (
-                  <div className="bg-amber-50 p-5 rounded-2xl border border-amber-200">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-amber-700 mb-2">
-                      Correction Notes (for audit trail)
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="Describe what was corrected..."
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      className="block w-full rounded-xl border border-amber-300 bg-white py-3 px-4 text-sm font-medium focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                    />
                   </div>
-                )}
-
-                <div className="flex justify-end pt-4">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 py-3.5 px-8 text-sm font-semibold text-white transition-all shadow-md cursor-pointer disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                    ) : (
-                      <>
-                        <Check size={16} className="stroke-3" />
-                        <span>
-                          {isEditing
-                            ? "Submit Corrections & Update Title"
-                            : "Audit and Register Title Parcel"}
-                        </span>
-                      </>
-                    )}
-                  </button>
+                  <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-3">
+                    {photoPreviews.map((src, i) => (
+                      <div
+                        key={i}
+                        className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-white"
+                      >
+                        <img
+                          src={src}
+                          alt={`Land photo ${i + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(i)}
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-[8px] cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    <label className="aspect-square rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/30 transition-colors">
+                      <Upload size={16} className="text-slate-400" />
+                      <span className="text-[8px] font-bold text-slate-400">
+                        Add Photo
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handlePhotoUpload}
+                        className="sr-only"
+                      />
+                    </label>
+                  </div>
                 </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {loading ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                  ) : (
+                    <Check size={16} />
+                  )}
+                  <span>
+                    {activeMode === "unassigned"
+                      ? isEditing
+                        ? "Update Unassigned Survey"
+                        : "Save Unassigned Survey"
+                      : assignExistingTitleId
+                        ? "Assign Title to Beneficiary"
+                        : isEditing
+                          ? "Save & Submit Correction"
+                          : "Encode & Submit for Admin Approval"}
+                  </span>
+                </button>
               </form>
             )}
           </div>

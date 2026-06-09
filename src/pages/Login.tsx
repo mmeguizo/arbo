@@ -58,16 +58,12 @@ export const Login: React.FC = () => {
       console.error("Login failure: ", err);
       if (
         err.code === "auth/user-not-found" ||
-        err.code === "auth/invalid-credential"
+        err.code === "auth/invalid-credential" ||
+        err.code === "auth/wrong-password"
       ) {
         setError(
-          "No account yet, please create one. Go to the registration page to sign up as an ARB beneficiary, or contact your administrator.",
+          "Invalid email or password. Please double-check your credentials.",
         );
-      } else if (
-        err.code === "auth/wrong-password" ||
-        err.code === "auth/invalid-credential"
-      ) {
-        setError("Invalid password. Please try again.");
       } else if (err.code === "auth/invalid-email") {
         setError("Please enter a valid email address.");
       } else {

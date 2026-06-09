@@ -107,17 +107,25 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const markAllAsRead = useCallback(async () => {
     if (notifications.length === 0) return;
+    // Optimistic local update
+    const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+    setNotifications((prev) =>
+      prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n)),
+    );
     try {
       const batch = writeBatch(db);
-      notifications
-        .filter((n) => !n.read)
-        .forEach((n) => {
-          const ref = doc(db, "notifications", n.id);
-          batch.update(ref, { read: true });
-        });
+      unreadIds.forEach((id) => {
+        const ref = doc(db, "notifications", id);
+        batch.update(ref, { read: true });
+      });
       await batch.commit();
     } catch (err) {
       console.error("Failed to mark all as read:", err);
+      // Revert on failure
+      setNotifications((prev) =>
+        prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: false } : n)),
+      );
     }
   }, [notifications]);
 
