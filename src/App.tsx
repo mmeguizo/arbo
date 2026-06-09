@@ -20,6 +20,9 @@ import { Search } from "./pages/Search";
 import { AdminUsers } from "./pages/AdminUsers";
 import { AuditLogs } from "./pages/AuditLogs";
 import { Reports } from "./pages/Reports";
+import { MyGrants } from "./pages/MyGrants";
+import { GrantManagement } from "./pages/GrantManagement";
+import { CooperativeManagement } from "./pages/CooperativeManagement";
 
 // A small gatekeeper component that routes authenticated users to their natural landing page
 const AuthRedirect: React.FC = () => {
@@ -78,6 +81,15 @@ function App() {
             />
 
             <Route
+              path="/my-grants"
+              element={
+                <ProtectedRoute allowedRoles={["arb"]}>
+                  <MyGrants />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
               path="/review-apps"
               element={
                 <ProtectedRoute allowedRoles={["admin", "staff"]}>
@@ -118,6 +130,24 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <Reports />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/grants"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <GrantManagement />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/cooperatives"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <CooperativeManagement />
                 </ProtectedRoute>
               }
             />

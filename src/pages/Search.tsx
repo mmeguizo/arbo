@@ -9,7 +9,6 @@ import {
   query,
   where,
   onSnapshot,
-  orderBy,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
@@ -50,6 +49,7 @@ interface SearchResult {
   surveyorId: string;
   encodedAt: string;
   landPhotos?: string[];
+  status?: string;
 }
 
 interface BeneficiaryProfile {
@@ -137,7 +137,6 @@ export const Search: React.FC = () => {
             const logsQ = query(
               collection(db, "auditLogs"),
               where("applicationId", "==", selectedRecord.applicationId),
-              orderBy("timestamp", "desc"),
             );
             const logsSnap = await getDocs(logsQ);
             if (!cancelled) {
@@ -145,6 +144,12 @@ export const Search: React.FC = () => {
               logsSnap.forEach((d) => {
                 logs.push({ id: d.id, ...d.data() } as AuditEntry);
               });
+              // Sort client-side by timestamp descending
+              logs.sort(
+                (a, b) =>
+                  new Date(b.timestamp).getTime() -
+                  new Date(a.timestamp).getTime(),
+              );
               setTitleAuditLogs(logs);
             }
           } catch {
@@ -329,28 +334,24 @@ export const Search: React.FC = () => {
                         {/* Beneficiary */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center space-x-2.5">
-                            <span className="p-2 rounded-lg bg-indigo-50 text-indigo-700">
+                            <span
+                              className={`p-2 rounded-lg ${
+                                item.status === "unassigned"
+                                  ? "bg-slate-100 text-slate-400"
+                                  : "bg-indigo-50 text-indigo-700"
+                              }`}
+                            >
                               <User size={16} />
                             </span>
-                            <span className="font-bold text-slate-800">
-                              {item.beneficiaryName}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Location */}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex flex-col text-xs space-y-0.5">
-                            <span className="inline-flex items-center space-x-1.5 font-bold text-slate-800">
-                              <MapPin size={12} className="text-slate-400" />
-                              <span>{item.municipality}</span>
-                            </span>
-                            <span className="inline-flex items-center space-x-1 font-mono text-[9px] text-slate-405 bg-slate-50 px-1 py-0.5 border rounded w-fit">
-                              <Compass size={10} className="text-slate-400" />
-                              <span>
-                                {item.geoLat}, {item.geoLng}
+                            {item.status === "unassigned" ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                                Unassigned
                               </span>
-                            </span>
+                            ) : (
+                              <span className="font-bold text-slate-800">
+                                {item.beneficiaryName}
+                              </span>
+                            )}
                           </div>
                         </td>
 

@@ -14,6 +14,7 @@ import {
   X,
   TrendingUp,
   ClipboardList,
+  Building2,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -41,6 +42,7 @@ export const Sidebar: React.FC = () => {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "My CLOA Record", path: "/my-application", icon: FileText },
+        { label: "My Grants", path: "/my-grants", icon: TrendingUp },
       ];
     }
 
@@ -69,6 +71,8 @@ export const Sidebar: React.FC = () => {
         { label: "Surveyor Stage", path: "/land-titles", icon: MapPin },
         { label: "Search Registry", path: "/search", icon: Search },
         { label: "Analytics & Reports", path: "/reports", icon: TrendingUp },
+        { label: "Grant Management", path: "/grants", icon: TrendingUp },
+        { label: "Cooperatives", path: "/cooperatives", icon: Building2 },
         { label: "System Users", path: "/accounts", icon: Settings },
         { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
       ];
@@ -100,7 +104,7 @@ export const Sidebar: React.FC = () => {
 
       {/* Sidebar container */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-64 transform bg-emerald-900 text-white transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:flex md:flex-col md:h-full ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 transform bg-emerald-900 text-white transition-transform duration-300 ease-in-out md:translate-x-0 md:sticky md:top-0 md:flex md:flex-col md:h-screen ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -169,21 +173,6 @@ export const Sidebar: React.FC = () => {
               </Link>
             );
           })}
-
-          {/* Add a placeholder greyed out Profitability Tracking representing future scope so the layout is faithful to the mockup */}
-          <div className="border-t border-emerald-800/60 my-4 pt-4">
-            <div className="flex items-center space-x-3 px-4 py-2 opacity-50 cursor-not-allowed">
-              <TrendingUp size={18} className="text-emerald-200" />
-              <div className="text-left">
-                <span className="text-xs font-semibold block text-emerald-100">
-                  Profitability Tracking
-                </span>
-                <span className="text-[9px] bg-emerald-800 text-amber-400 px-1 py-0.5 rounded uppercase font-bold">
-                  Future Scope
-                </span>
-              </div>
-            </div>
-          </div>
         </nav>
 
         {/* Footer info & Logout */}

@@ -1,10 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { useNotifications } from "../contexts/NotificationContext";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  useNotifications,
+  type Notification,
+} from "../contexts/NotificationContext";
 import { Bell, CheckCheck } from "lucide-react";
 
 export const NotificationBell: React.FC = () => {
+  const { profile } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllAsRead } =
     useNotifications();
   const [open, setOpen] = useState(false);
@@ -28,17 +33,35 @@ export const NotificationBell: React.FC = () => {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const handleClickNotification = async (n: {
-    id: string;
-    applicationId: string | null;
-  }) => {
+  const getNotificationRoute = (n: Notification): string => {
+    const role = profile?.role;
+    // Admin: routes to verified (Admin Stage) tab
+    if (role === "admin") {
+      return "/review-apps?tab=verified";
+    }
+    // Staff: routes to under_review (Staff Stage) tab
+    if (role === "staff") {
+      return "/review-apps?tab=under_review";
+    }
+    // Surveyor: forwarded/correction go to land-titles
+    if (role === "surveyor") {
+      if (n.type === "forwarded" || n.type === "correction_needed") {
+        return "/land-titles";
+      }
+      return "/land-titles";
+    }
+    // ARB
+    if (role === "arb") {
+      return "/my-application";
+    }
+    return "/dashboard";
+  };
+
+  const handleClickNotification = async (n: Notification) => {
     await markAsRead(n.id);
     setOpen(false);
-    if (n.applicationId) {
-      navigate("/review-apps");
-    } else {
-      navigate("/dashboard");
-    }
+    const route = getNotificationRoute(n);
+    navigate(route);
   };
 
   const latest = notifications.slice(0, 10);
