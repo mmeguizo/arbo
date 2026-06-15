@@ -55,7 +55,7 @@ export const Sidebar: React.FC = () => {
       ];
     }
 
-    if (role === "surveyor") {
+    if (role === "encoder") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "Encode Title Info", path: "/land-titles", icon: MapPin },
@@ -68,7 +68,7 @@ export const Sidebar: React.FC = () => {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "Review (Staff Stage)", path: "/review-apps", icon: FileText },
-        { label: "Surveyor Stage", path: "/land-titles", icon: MapPin },
+        { label: "Encoder Stage", path: "/land-titles", icon: MapPin },
         { label: "Search Registry", path: "/search", icon: Search },
         { label: "Analytics & Reports", path: "/reports", icon: TrendingUp },
         { label: "Grant Management", path: "/grants", icon: TrendingUp },

@@ -4,7 +4,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
 
 // Type definitions for user profile roles
-export type UserRole = "arb" | "staff" | "surveyor" | "admin";
+export type UserRole = "arb" | "staff" | "encoder" | "admin";
 
 export interface UserProfile {
   uid: string;

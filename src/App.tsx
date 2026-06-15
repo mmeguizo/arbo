@@ -45,7 +45,7 @@ const AuthRedirect: React.FC = () => {
     return <Navigate to="/my-application" replace />;
   }
 
-  // Official roles go to Admin/Staff/Surveyor Dashboard
+  // Official roles go to Admin/Staff/Encoder Dashboard
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -64,7 +64,7 @@ function App() {
               path="/dashboard"
               element={
                 <ProtectedRoute
-                  allowedRoles={["admin", "staff", "surveyor", "arb"]}
+                  allowedRoles={["admin", "staff", "encoder", "arb"]}
                 >
                   <Dashboard />
                 </ProtectedRoute>
@@ -101,7 +101,7 @@ function App() {
             <Route
               path="/land-titles"
               element={
-                <ProtectedRoute allowedRoles={["surveyor", "admin"]}>
+                <ProtectedRoute allowedRoles={["encoder", "admin"]}>
                   <LandTitles />
                 </ProtectedRoute>
               }
@@ -110,7 +110,7 @@ function App() {
             <Route
               path="/search"
               element={
-                <ProtectedRoute allowedRoles={["admin", "staff", "surveyor"]}>
+                <ProtectedRoute allowedRoles={["admin", "staff", "encoder"]}>
                   <Search />
                 </ProtectedRoute>
               }
@@ -155,7 +155,7 @@ function App() {
             <Route
               path="/audit-logs"
               element={
-                <ProtectedRoute allowedRoles={["admin", "staff", "surveyor"]}>
+                <ProtectedRoute allowedRoles={["admin", "staff", "encoder"]}>
                   <AuditLogs />
                 </ProtectedRoute>
               }

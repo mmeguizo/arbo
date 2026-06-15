@@ -43,8 +43,8 @@ export const NotificationBell: React.FC = () => {
     if (role === "staff") {
       return "/review-apps?tab=under_review";
     }
-    // Surveyor: forwarded/correction go to land-titles
-    if (role === "surveyor") {
+    // Encoder: forwarded/correction go to land-titles
+    if (role === "encoder") {
       if (n.type === "forwarded" || n.type === "correction_needed") {
         return "/land-titles";
       }

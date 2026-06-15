@@ -40,7 +40,7 @@ const roleBadge = (role: string) => {
   const colors: Record<string, string> = {
     staff: "bg-orange-100 text-orange-700",
     admin: "bg-blue-100 text-blue-700",
-    surveyor: "bg-emerald-100 text-emerald-700",
+    encoder: "bg-emerald-100 text-emerald-700",
     arb: "bg-slate-100 text-slate-600",
   };
   return colors[role] || "bg-slate-100 text-slate-600";
@@ -49,7 +49,6 @@ const roleBadge = (role: string) => {
 const statusColor = (status: string) => {
   const colors: Record<string, string> = {
     under_review: "text-orange-600",
-    forwarded_to_surveyor: "text-amber-600",
     verified: "text-emerald-600",
     awarded: "text-blue-600",
     disputed: "text-rose-600",
@@ -80,7 +79,7 @@ export const AuditLogs: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>("timestamp");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  // Admin sees all; staff/surveyor see only their own actions (strict by name)
+  // Admin sees all; staff/encoder see only their own actions (strict by name)
   const isAdmin = profile?.role === "admin";
 
   useEffect(() => {
@@ -178,7 +177,7 @@ export const AuditLogs: React.FC = () => {
   const totalPages = Math.ceil(filteredLogs.length / PAGE);
   const paginatedLogs = filteredLogs.slice(page * PAGE, (page + 1) * PAGE);
 
-  const roles = ["all", "staff", "admin", "surveyor"];
+  const roles = ["all", "staff", "admin", "encoder"];
 
   // Sorting handler
   const handleSort = (field: SortField) => {
@@ -230,7 +229,7 @@ export const AuditLogs: React.FC = () => {
     );
   };
 
-  // Summary stats — use scopedLogs so staff/surveyor see their own counts
+  // Summary stats — use scopedLogs so staff/encoder see their own counts
   const totalThisMonth = scopedLogs.filter((l) =>
     isThisMonth(l.timestamp),
   ).length;

@@ -7,6 +7,7 @@ import {
 } from "../contexts/NotificationContext";
 import { Sidebar } from "../components/Sidebar";
 import { StatusBadge, type ApplicationStatus } from "../components/StatusBadge";
+import { LandAssignmentModal } from "../components/LandAssignmentModal";
 import {
   collection,
   updateDoc,
@@ -33,6 +34,7 @@ import {
   ArrowLeft,
   AlertCircle,
   RefreshCw,
+  MapPin,
 } from "lucide-react";
 
 interface Application {
@@ -52,9 +54,8 @@ interface Application {
   adminApprovedAt: string | null;
   arbResponse: string;
   documents: {
-    cedula: string | null;
     birthCert: string | null;
-    brgyCert: string | null;
+    governmentId: string | null;
     picture: string | null;
   };
   // Internal correction fields (invisible to ARB)
@@ -75,11 +76,7 @@ interface AuditLog {
   notes: string;
 }
 
-type TabKey =
-  | "under_review"
-  | "forwarded_to_surveyor"
-  | "verified"
-  | "resolved";
+type TabKey = "under_review" | "verified" | "resolved";
 
 export const ReviewApps: React.FC = () => {
   const { profile } = useAuth();
@@ -94,8 +91,9 @@ export const ReviewApps: React.FC = () => {
   const [showOverride, setShowOverride] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmRevert, setConfirmRevert] = useState(false);
-  const [showReturnSurveyor, setShowReturnSurveyor] = useState(false);
+  const [showReturnEncoder, setShowReturnEncoder] = useState(false);
   const [showReturnStaff, setShowReturnStaff] = useState(false);
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
 
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>("under_review");
@@ -105,12 +103,7 @@ export const ReviewApps: React.FC = () => {
     const tabParam = searchParams.get("tab");
     if (
       tabParam &&
-      [
-        "under_review",
-        "forwarded_to_surveyor",
-        "verified",
-        "resolved",
-      ].includes(tabParam)
+      ["under_review", "verified", "resolved"].includes(tabParam)
     ) {
       setActiveTab(tabParam as TabKey);
     }
@@ -234,8 +227,8 @@ export const ReviewApps: React.FC = () => {
 
       // Separate notes by role
       if (profile.role === "staff") {
-        // If forwarding, clear staff notes so surveyor/admin don't see old remarks
-        if (newStatus === "forwarded_to_surveyor") {
+        // When staff verifies & forwards, clear staff notes for clean admin review
+        if (newStatus === "verified") {
           payload.staffNotes = "";
         } else {
           payload.staffNotes = notesInput.trim();
@@ -279,13 +272,13 @@ export const ReviewApps: React.FC = () => {
       );
 
       // 🔔 NOTIFICATIONS
-      if (profile.role === "staff" && newStatus === "forwarded_to_surveyor") {
-        // Notify all surveyors
+      if (profile.role === "staff" && newStatus === "verified") {
+        // Notify all admins that an application is ready for approval
         await broadcastNotification(
-          "surveyor",
+          "admin",
           "forwarded",
-          "New Land for Surveyor Encoding",
-          `Staff ${profile.name} forwarded ${selectedApp.userName}'s application (${selectedApp.id}) for land title encoding.`,
+          "Application Ready for Admin Review",
+          `Staff ${profile.name} verified and forwarded ${selectedApp.userName}'s application (${selectedApp.id}) for admin approval.`,
           selectedApp.id,
         );
       } else if (profile.role === "admin" && newStatus === "awarded") {
@@ -316,10 +309,8 @@ export const ReviewApps: React.FC = () => {
     }
   };
 
-  // Internal correction: admin returns to surveyor or staff (invisible to ARB)
-  const handleReturnForCorrection = async (
-    assignRole: "surveyor" | "staff",
-  ) => {
+  // Internal correction: admin returns to encoder or staff (invisible to ARB)
+  const handleReturnForCorrection = async (assignRole: "encoder" | "staff") => {
     if (!selectedApp || !profile || !internalNotesInput.trim()) {
       alert("Please provide internal correction notes.");
       return;
@@ -329,13 +320,11 @@ export const ReviewApps: React.FC = () => {
       const docRef = doc(db, "applications", selectedApp.id);
       // Also set status back so it appears in the assigned role's queue
       const newStatus =
-        assignRole === "surveyor" ? "forwarded_to_surveyor" : "under_review";
+        assignRole === "encoder" ? "under_review" : "under_review";
       await updateDoc(docRef, {
         status: newStatus,
         internalStatus:
-          assignRole === "surveyor"
-            ? "correction_surveyor"
-            : "correction_staff",
+          assignRole === "encoder" ? "correction_encoder" : "correction_staff",
         internalNotes: internalNotesInput.trim(),
         internalAssignedTo: null,
         internalAssignedRole: assignRole,
@@ -358,7 +347,7 @@ export const ReviewApps: React.FC = () => {
       );
 
       setInternalNotesInput("");
-      setShowReturnSurveyor(false);
+      setShowReturnEncoder(false);
       setShowReturnStaff(false);
     } catch (err) {
       console.error("Failed to return for correction:", err);
@@ -367,7 +356,7 @@ export const ReviewApps: React.FC = () => {
     }
   };
 
-  // Surveyor/Staff resolves internal correction
+  // Encoder/Staff resolves internal correction
   const handleResolveCorrection = async () => {
     if (!selectedApp || !profile) return;
     setLoading(true);
@@ -439,8 +428,6 @@ export const ReviewApps: React.FC = () => {
     return apps.filter((a) => {
       const matchesTab = (() => {
         if (activeTab === "under_review") return a.status === "under_review";
-        if (activeTab === "forwarded_to_surveyor")
-          return a.status === "forwarded_to_surveyor";
         if (activeTab === "verified") return a.status === "verified";
         return a.status === "awarded" || a.status === "disputed";
       })();
@@ -462,11 +449,6 @@ export const ReviewApps: React.FC = () => {
       key: "under_review",
       label: "Staff Stage",
       color: "border-emerald-800 text-emerald-800 bg-emerald-50/10",
-    },
-    {
-      key: "forwarded_to_surveyor",
-      label: "Surveyor Stage",
-      color: "border-amber-600 text-amber-700 bg-amber-50/10",
     },
     {
       key: "verified",
@@ -571,7 +553,7 @@ export const ReviewApps: React.FC = () => {
                           {item.userName}
                         </span>
                         {item.internalStatus &&
-                          (item.internalStatus === "correction_surveyor" ||
+                          (item.internalStatus === "correction_encoder" ||
                             item.internalStatus === "correction_staff") && (
                             <span className="shrink-0 text-[8px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded-full">
                               !
@@ -588,12 +570,12 @@ export const ReviewApps: React.FC = () => {
                       Brgy: {item.userBarangay}
                     </p>
                     {item.internalStatus &&
-                      (item.internalStatus === "correction_surveyor" ||
+                      (item.internalStatus === "correction_encoder" ||
                         item.internalStatus === "correction_staff") && (
                         <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1">
                           <ArrowLeft size={10} />
-                          {item.internalStatus === "correction_surveyor"
-                            ? "Returned to Surveyor"
+                          {item.internalStatus === "correction_encoder"
+                            ? "Returned to Encoder"
                             : "Returned to Staff"}
                         </p>
                       )}
@@ -679,30 +661,50 @@ export const ReviewApps: React.FC = () => {
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
                     Evaluate Attached Documentation
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    {(["cedula", "birthCert", "brgyCert"] as const).map(
-                      (key) => (
-                        <div
-                          key={key}
-                          className="border border-slate-150 rounded-xl p-4 bg-slate-50 flex flex-col items-center justify-between text-center space-y-3"
-                        >
-                          <div className="flex flex-col items-center">
-                            <FileText
-                              size={20}
-                              className="text-slate-550 mb-1"
-                            />
-                            <span className="text-xs font-semibold text-slate-800">
-                              {key === "cedula"
-                                ? "Cedula"
-                                : key === "birthCert"
-                                  ? "Birth Certificate"
-                                  : "Barangay Residency"}
-                            </span>
-                          </div>
-                          {selectedApp.documents[key] ? (
-                            selectedApp.documents[key]!.startsWith(
-                              "data:application/pdf",
-                            ) ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {(["birthCert", "governmentId"] as const).map((key) => (
+                      <div
+                        key={key}
+                        className="border border-slate-150 rounded-xl p-4 bg-slate-50 flex flex-col items-center justify-between text-center space-y-3"
+                      >
+                        <div className="flex flex-col items-center">
+                          <FileText size={20} className="text-slate-550 mb-1" />
+                          <span className="text-xs font-semibold text-slate-800">
+                            {key === "birthCert"
+                              ? "Birth Certificate"
+                              : "Government-Issued ID"}
+                          </span>
+                        </div>
+                        {selectedApp.documents[key] ? (
+                          selectedApp.documents[key]!.startsWith(
+                            "data:application/pdf",
+                          ) ? (
+                            <button
+                              onClick={() =>
+                                setActivePreviewDoc({
+                                  title: key,
+                                  src: selectedApp.documents[key]!,
+                                })
+                              }
+                              className="w-full h-20 bg-white rounded border border-slate-200 flex flex-col items-center justify-center shadow-inner cursor-pointer hover:bg-red-50 transition-colors"
+                            >
+                              <FileText
+                                size={20}
+                                className="text-red-500 mb-1"
+                              />
+                              <span className="text-[9px] font-bold text-slate-500 uppercase">
+                                PDF Document
+                              </span>
+                              <span className="text-[10px] text-emerald-600 font-bold mt-0.5">
+                                Click to preview
+                              </span>
+                            </button>
+                          ) : (
+                            <div className="relative group w-full h-20 bg-white rounded border border-slate-200 overflow-hidden flex items-center justify-center shadow-inner">
+                              <img
+                                src={selectedApp.documents[key]!}
+                                className="h-full w-full object-contain"
+                              />
                               <button
                                 onClick={() =>
                                   setActivePreviewDoc({
@@ -710,47 +712,20 @@ export const ReviewApps: React.FC = () => {
                                     src: selectedApp.documents[key]!,
                                   })
                                 }
-                                className="w-full h-20 bg-white rounded border border-slate-200 flex flex-col items-center justify-center shadow-inner cursor-pointer hover:bg-red-50 transition-colors"
+                                className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-[10px] uppercase font-bold cursor-pointer"
                               >
-                                <FileText
-                                  size={20}
-                                  className="text-red-500 mb-1"
-                                />
-                                <span className="text-[9px] font-bold text-slate-500 uppercase">
-                                  PDF Document
-                                </span>
-                                <span className="text-[10px] text-emerald-600 font-bold mt-0.5">
-                                  Click to preview
-                                </span>
+                                <Eye size={12} className="mr-1" />
+                                <span>Preview</span>
                               </button>
-                            ) : (
-                              <div className="relative group w-full h-20 bg-white rounded border border-slate-200 overflow-hidden flex items-center justify-center shadow-inner">
-                                <img
-                                  src={selectedApp.documents[key]!}
-                                  className="h-full w-full object-contain"
-                                />
-                                <button
-                                  onClick={() =>
-                                    setActivePreviewDoc({
-                                      title: key,
-                                      src: selectedApp.documents[key]!,
-                                    })
-                                  }
-                                  className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity text-[10px] uppercase font-bold cursor-pointer"
-                                >
-                                  <Eye size={12} className="mr-1" />
-                                  <span>Preview</span>
-                                </button>
-                              </div>
-                            )
-                          ) : (
-                            <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">
-                              Incomplete
-                            </span>
-                          )}
-                        </div>
-                      ),
-                    )}
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">
+                            Incomplete
+                          </span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -770,16 +745,23 @@ export const ReviewApps: React.FC = () => {
 
                 {/* Actions Block */}
                 <div className="flex flex-wrap items-center gap-3 pt-2">
-                  {/* STAFF: under_review → forward to surveyor or dispute */}
+                  {/* STAFF: under_review → verify & forward to admin or dispute */}
                   {profile?.role === "staff" &&
                     selectedApp.status === "under_review" && (
                       <>
                         <button
-                          onClick={() => updateStatus("forwarded_to_surveyor")}
+                          onClick={() => updateStatus("verified")}
                           className="flex items-center space-x-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer"
                         >
                           <Check size={16} className="stroke-3" />
-                          <span>Forward for Surveyor Processing</span>
+                          <span>Verify & Forward to Admin</span>
+                        </button>
+                        <button
+                          onClick={() => setShowAssignmentModal(true)}
+                          className="flex items-center space-x-2 rounded-xl bg-blue-700 hover:bg-blue-900 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer"
+                        >
+                          <MapPin size={16} />
+                          <span>Assign Land & Forward</span>
                         </button>
                         <button
                           onClick={() => {
@@ -811,9 +793,9 @@ export const ReviewApps: React.FC = () => {
                       </button>
                     )}
 
-                  {/* STAFF: revert — available on forwarded_to_surveyor or disputed */}
+                  {/* STAFF: revert — available on verified or disputed */}
                   {profile?.role === "staff" &&
-                    (selectedApp.status === "forwarded_to_surveyor" ||
+                    (selectedApp.status === "verified" ||
                       selectedApp.status === "disputed") && (
                       <button
                         onClick={() => setConfirmRevert(true)}
@@ -824,9 +806,9 @@ export const ReviewApps: React.FC = () => {
                       </button>
                     )}
 
-                  {/* STAFF/SURVEYOR: internal correction indicator + resolve button */}
+                  {/* STAFF/ENCODER: internal correction indicator + resolve button */}
                   {selectedApp.internalStatus &&
-                    (selectedApp.internalStatus === "correction_surveyor" ||
+                    (selectedApp.internalStatus === "correction_encoder" ||
                       selectedApp.internalStatus === "correction_staff") && (
                       <div className="w-full bg-red-50 border border-red-200 rounded-xl p-4 space-y-2">
                         <div className="flex items-center gap-2">
@@ -836,9 +818,8 @@ export const ReviewApps: React.FC = () => {
                           />
                           <span className="text-xs font-bold text-red-700">
                             Correction Required —{" "}
-                            {selectedApp.internalStatus ===
-                            "correction_surveyor"
-                              ? "Assigned to Surveyor"
+                            {selectedApp.internalStatus === "correction_encoder"
+                              ? "Assigned to Encoder"
                               : "Assigned to Staff"}
                           </span>
                         </div>
@@ -849,8 +830,8 @@ export const ReviewApps: React.FC = () => {
                           </p>
                         )}
                         {/* Only show resolve button if the current user's role matches the assigned role */}
-                        {(selectedApp.internalAssignedRole === "surveyor" &&
-                          profile?.role === "surveyor") ||
+                        {(selectedApp.internalAssignedRole === "encoder" &&
+                          profile?.role === "encoder") ||
                         (selectedApp.internalAssignedRole === "staff" &&
                           profile?.role === "staff") ? (
                           <button
@@ -862,17 +843,6 @@ export const ReviewApps: React.FC = () => {
                             <span>Resolve Correction</span>
                           </button>
                         ) : null}
-                      </div>
-                    )}
-
-                  {/* SURVEYOR: forwarded_to_surveyor info */}
-                  {(profile?.role === "staff" || profile?.role === "admin") &&
-                    selectedApp.status === "forwarded_to_surveyor" && (
-                      <div className="flex items-center space-x-2 text-amber-800 bg-amber-50 border border-amber-200 py-4 px-6 rounded-xl font-semibold text-xs">
-                        <Clock size={16} />
-                        <span>
-                          Awaiting surveyor to encode land title details.
-                        </span>
                       </div>
                     )}
 
@@ -903,11 +873,11 @@ export const ReviewApps: React.FC = () => {
                           <span>Flag as Disputed</span>
                         </button>
                         <button
-                          onClick={() => setShowReturnSurveyor(true)}
+                          onClick={() => setShowReturnEncoder(true)}
                           className="flex items-center space-x-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 py-3.5 px-5 text-sm font-semibold transition-all cursor-pointer"
                         >
                           <ArrowLeft size={16} />
-                          <span>Return to Surveyor</span>
+                          <span>Return to Encoder</span>
                         </button>
                         <button
                           onClick={() => setShowReturnStaff(true)}
@@ -939,15 +909,13 @@ export const ReviewApps: React.FC = () => {
                             </span>
                             {selectedApp.status === "under_review" && (
                               <button
-                                onClick={() =>
-                                  updateStatus("forwarded_to_surveyor")
-                                }
+                                onClick={() => updateStatus("verified")}
                                 className="rounded-lg bg-red-600 hover:bg-red-800 text-white py-2 px-4 text-xs font-bold cursor-pointer"
                               >
-                                Bypass: Forward to Surveyor
+                                Bypass: Forward to Admin
                               </button>
                             )}
-                            {selectedApp.status === "forwarded_to_surveyor" && (
+                            {selectedApp.status === "verified" && (
                               <button
                                 onClick={() => updateStatus("verified")}
                                 className="rounded-lg bg-red-600 hover:bg-red-800 text-white py-2 px-4 text-xs font-bold cursor-pointer"
@@ -980,7 +948,7 @@ export const ReviewApps: React.FC = () => {
                     <div className="flex items-center space-x-2 text-emerald-800 bg-emerald-50 border border-emerald-200 py-4 px-6 rounded-xl font-semibold text-xs">
                       <CheckCircle2 size={16} />
                       <span>
-                        Title awarded. Land parcel encoded by surveyor.
+                        Title awarded. Land parcel encoded by encoder.
                       </span>
                     </div>
                   )}
@@ -1093,8 +1061,8 @@ export const ReviewApps: React.FC = () => {
         </div>
       )}
 
-      {/* Return to Surveyor Correction Modal */}
-      {showReturnSurveyor && (
+      {/* Return to Encoder Correction Modal */}
+      {showReturnEncoder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-left space-y-4">
             <div className="flex items-start space-x-3">
@@ -1103,13 +1071,13 @@ export const ReviewApps: React.FC = () => {
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900">
-                  Return to Surveyor for Correction
+                  Return to Encoder for Correction
                 </h4>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   This will internally flag{" "}
                   <span className="font-bold">{selectedApp?.userName}</span>'s
-                  application for the surveyor to correct. The applicant will
-                  NOT be notified.
+                  application for the encoder to correct. The applicant will NOT
+                  be notified.
                 </p>
               </div>
             </div>
@@ -1123,7 +1091,7 @@ export const ReviewApps: React.FC = () => {
             <div className="flex justify-end space-x-3 pt-2">
               <button
                 onClick={() => {
-                  setShowReturnSurveyor(false);
+                  setShowReturnEncoder(false);
                   setInternalNotesInput("");
                 }}
                 className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
@@ -1131,11 +1099,11 @@ export const ReviewApps: React.FC = () => {
                 Cancel
               </button>
               <button
-                onClick={() => handleReturnForCorrection("surveyor")}
+                onClick={() => handleReturnForCorrection("encoder")}
                 disabled={!internalNotesInput.trim() || loading}
                 className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white cursor-pointer disabled:opacity-50"
               >
-                Send to Surveyor
+                Send to Encoder
               </button>
             </div>
           </div>
@@ -1226,6 +1194,21 @@ export const ReviewApps: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Land Assignment Modal */}
+      {showAssignmentModal && selectedApp && (
+        <LandAssignmentModal
+          applicationId={selectedApp.id}
+          applicantName={selectedApp.userName}
+          applicantUserId={selectedApp.userId}
+          onClose={() => setShowAssignmentModal(false)}
+          onAssigned={(titleNumber) => {
+            setShowAssignmentModal(false);
+            // Refresh the app list to show updated status
+            setRefreshKey((k) => k + 1);
+          }}
+        />
       )}
     </div>
   );

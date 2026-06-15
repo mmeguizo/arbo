@@ -1,8 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
-import { collection, getDocs, doc, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import { db, firebaseConfig } from "../firebase/config";
 import {
   UserPlus,
@@ -26,7 +36,7 @@ interface UserProfile {
   uid: string;
   name: string;
   email: string;
-  role: "arb" | "staff" | "surveyor" | "admin";
+  role: "arb" | "staff" | "encoder" | "admin";
   barangay: string;
   municipality: string;
   province: string;
@@ -44,7 +54,7 @@ export const AdminUsers: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"staff" | "surveyor" | "admin">("staff");
+  const [role, setRole] = useState<"staff" | "encoder" | "admin">("staff");
   const [province, setProvince] = useState("Negros Occidental");
   const [barangay, setBarangay] = useState("Isabela");
   const [municipality, setMunicipality] = useState("");
@@ -56,7 +66,7 @@ export const AdminUsers: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      // Query to get Admin, Staff, & Surveyor accounts
+      // Query to get Admin, Staff, & Encoder accounts
       const snap = await getDocs(collection(db, "users"));
       const list: UserProfile[] = [];
       snap.forEach((d) => {
@@ -66,7 +76,7 @@ export const AdminUsers: React.FC = () => {
             uid: d.id,
             name: u.name || "Unnamed",
             email: u.email || "",
-            role: u.role as "staff" | "surveyor" | "admin",
+            role: u.role as "staff" | "encoder" | "admin",
             barangay: u.barangay || "",
             municipality: u.municipality || "",
             province: u.province || "Negros Occidental",
@@ -210,7 +220,10 @@ export const AdminUsers: React.FC = () => {
       });
     } catch (err) {
       console.error("Failed to send reset email", err);
-      setFeedback({ type: "error", msg: "Failed to send password reset email." });
+      setFeedback({
+        type: "error",
+        msg: "Failed to send password reset email.",
+      });
     }
   };
 
@@ -240,8 +253,8 @@ export const AdminUsers: React.FC = () => {
               <span>Register Official / Examiner</span>
             </h3>
             <p className="text-[10px] text-slate-400 mb-5 leading-normal">
-              Directly seed authentic DAR Staff, Surveyor, or sub-admin
-              profiles. These bypass the farmer registration flow and acquire
+              Directly seed authentic DAR Staff, Encoder, or sub-admin profiles.
+              These bypass the farmer registration flow and acquire
               instantaneous role-restricted privileges.
             </p>
 
@@ -325,15 +338,15 @@ export const AdminUsers: React.FC = () => {
                 <select
                   value={role}
                   onChange={(e) =>
-                    setRole(e.target.value as "staff" | "surveyor" | "admin")
+                    setRole(e.target.value as "staff" | "encoder" | "admin")
                   }
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
                 >
                   <option value="staff">
                     DAR Staff (Municipal Document Screener)
                   </option>
-                  <option value="surveyor">
-                    DAR Surveyor (GPS/Title Coordinator)
+                  <option value="encoder">
+                    DAR Encoder (Land Survey Data Specialist)
                   </option>
                   <option value="admin">
                     District Administrator (Final Approver)
@@ -357,7 +370,9 @@ export const AdminUsers: React.FC = () => {
                     className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
                   >
                     {localityData.provinces.map((p) => (
-                      <option key={p.name} value={p.name}>{p.name}</option>
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -484,13 +499,13 @@ export const AdminUsers: React.FC = () => {
                               className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wide border ${
                                 u.role === "admin"
                                   ? "bg-amber-50 border-amber-200 text-amber-700"
-                                  : u.role === "surveyor"
+                                  : u.role === "encoder"
                                     ? "bg-indigo-50 border-indigo-200 text-indigo-700"
                                     : "bg-emerald-50 border-emerald-200 text-emerald-700"
                               }`}
                             >
                               {u.role === "admin" && <Shield size={10} />}
-                              {u.role === "surveyor" && <Hash size={10} />}
+                              {u.role === "encoder" && <Hash size={10} />}
                               {u.role === "staff" && <Briefcase size={10} />}
                               <span>{u.role}</span>
                             </span>
@@ -510,20 +525,26 @@ export const AdminUsers: React.FC = () => {
                             </button>
                             <button
                               onClick={() => handleToggleStatus(u)}
-                              title={u.isActive ? "Disable User" : "Enable User"}
+                              title={
+                                u.isActive ? "Disable User" : "Enable User"
+                              }
                               className={`inline-flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
                                 u.isActive
                                   ? "bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-700"
                                   : "bg-emerald-50 text-emerald-500 hover:bg-emerald-100 hover:text-emerald-700"
                               }`}
                             >
-                              {u.isActive ? <PowerOff size={12} /> : <Power size={12} />}
+                              {u.isActive ? (
+                                <PowerOff size={12} />
+                              ) : (
+                                <Power size={12} />
+                              )}
                             </button>
                           </td>
                         </tr>
                       ))}
 
-                        {users.length === 0 && (
+                      {users.length === 0 && (
                         <tr>
                           <td
                             colSpan={6}

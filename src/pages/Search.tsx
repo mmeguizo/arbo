@@ -46,10 +46,13 @@ interface SearchResult {
   geoLat: string;
   geoLng: string;
   beneficiaryName: string;
-  surveyorId: string;
+  encoderId: string;
   encodedAt: string;
   landPhotos?: string[];
   status?: string;
+  titleType?: string;
+  cloaType?: string | null;
+  aspPsdNumber?: string;
 }
 
 interface BeneficiaryProfile {
@@ -363,11 +366,11 @@ export const Search: React.FC = () => {
                           </span>
                         </td>
 
-                        {/* Surveyor ID */}
+                        {/* Encoder ID */}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center justify-end space-x-2">
                             <span className="text-slate-450 italic text-xs">
-                              {item.surveyorId}
+                              {item.encoderId}
                             </span>
                             <button
                               onClick={(e) => {
@@ -400,7 +403,7 @@ export const Search: React.FC = () => {
                             </p>
                             <p className="text-[10px] text-slate-400 leading-normal">
                               Double check Title card characters or beneficiary
-                              name spelling. If new, confirm surveyors have
+                              name spelling. If new, confirm encoders have
                               submitted the coordinate records.
                             </p>
                           </div>
@@ -697,7 +700,7 @@ export const Search: React.FC = () => {
                   <span className="text-xs text-slate-500">
                     Encoded by{" "}
                     <span className="font-bold text-slate-700">
-                      {selectedRecord.surveyorId}
+                      {selectedRecord.encoderId}
                     </span>
                   </span>
                 </div>

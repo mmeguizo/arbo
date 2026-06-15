@@ -25,12 +25,11 @@ import {
 
 import localityData from "../data/locality.json";
 
-type DocumentField = "cedula" | "birthCert" | "brgyCert" | "picture";
+type DocumentField = "birthCert" | "governmentId" | "picture";
 
 interface UploadedDocumentUrls {
-  cedula: string | null;
   birthCert: string | null;
-  brgyCert: string | null;
+  governmentId: string | null;
   picture: string | null;
 }
 
@@ -81,26 +80,22 @@ export const Register: React.FC = () => {
 
   // Document files selected for upload (stored as File objects, uploaded to Storage on submit)
   const [docFiles, setDocFiles] = useState<{
-    cedula: File | null;
     birthCert: File | null;
-    brgyCert: File | null;
+    governmentId: File | null;
     picture: File | null;
   }>({
-    cedula: null,
     birthCert: null,
-    brgyCert: null,
+    governmentId: null,
     picture: null,
   });
 
   const [docNames, setDocNames] = useState<{
-    cedula: string;
     birthCert: string;
-    brgyCert: string;
+    governmentId: string;
     picture: string;
   }>({
-    cedula: "",
     birthCert: "",
-    brgyCert: "",
+    governmentId: "",
     picture: "",
   });
 
@@ -265,16 +260,14 @@ export const Register: React.FC = () => {
 
       // 2. Upload documents to Firebase Storage and collect download URLs
       const uploadedDocuments: UploadedDocumentUrls = {
-        cedula: null,
         birthCert: null,
-        brgyCert: null,
+        governmentId: null,
         picture: null,
       };
 
       const docTypes: DocumentField[] = [
-        "cedula",
         "birthCert",
-        "brgyCert",
+        "governmentId",
         "picture",
       ];
       for (const docType of docTypes) {
@@ -618,66 +611,22 @@ export const Register: React.FC = () => {
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Cedula */}
+                {/* Government ID */}
                 <div className="border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-50 p-5 rounded-2xl transition-all relative flex flex-col items-center justify-center text-center">
                   <Upload size={24} className="text-slate-400 mb-2" />
                   <span className="text-xs font-bold text-slate-800">
-                    Community Tax Certificate (Cedula)
+                    Government-Issued ID (Any valid ID)
                   </span>
                   <span className="text-[10px] text-slate-400 mt-1">
-                    {docNames.cedula || "No file chosen"}
+                    {docNames.governmentId || "No file chosen"}
                   </span>
                   <input
                     type="file"
                     accept="image/*,application/pdf"
-                    onChange={(e) => handleFileChange(e, "cedula")}
+                    onChange={(e) => handleFileChange(e, "governmentId")}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
-                  {hasDoc("cedula") && (
-                    <span className="absolute top-2 right-2 text-[10px] uppercase font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                      Ready
-                    </span>
-                  )}
-                </div>
-
-                {/* Birth Certificate */}
-                <div className="border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-50 p-5 rounded-2xl transition-all relative flex flex-col items-center justify-center text-center">
-                  <Upload size={24} className="text-slate-400 mb-2" />
-                  <span className="text-xs font-bold text-slate-800">
-                    Birth Certificate
-                  </span>
-                  <span className="text-[10px] text-slate-400 mt-1">
-                    {docNames.birthCert || "No file chosen"}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(e) => handleFileChange(e, "birthCert")}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                  />
-                  {hasDoc("birthCert") && (
-                    <span className="absolute top-2 right-2 text-[10px] uppercase font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                      Ready
-                    </span>
-                  )}
-                </div>
-
-                {/* Barangay Certificate */}
-                <div className="border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-50 p-5 rounded-2xl transition-all relative flex flex-col items-center justify-center text-center">
-                  <Upload size={24} className="text-slate-400 mb-2" />
-                  <span className="text-xs font-bold text-slate-800">
-                    Barangay Certificate (Residency check)
-                  </span>
-                  <span className="text-[10px] text-slate-400 mt-1">
-                    {docNames.brgyCert || "No file chosen"}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(e) => handleFileChange(e, "brgyCert")}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                  />
-                  {hasDoc("brgyCert") && (
+                  {hasDoc("governmentId") && (
                     <span className="absolute top-2 right-2 text-[10px] uppercase font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
                       Ready
                     </span>

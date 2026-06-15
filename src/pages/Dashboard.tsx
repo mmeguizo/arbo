@@ -227,14 +227,10 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
                   <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
-                    Surveyor Stage
+                    Verified Stage
                   </span>
                   <p className="text-2xl font-extrabold text-amber-900 mt-1">
-                    {
-                      applications.filter(
-                        (a) => a.status === "forwarded_to_surveyor",
-                      ).length
-                    }
+                    {applications.filter((a) => a.status === "verified").length}
                   </p>
                 </div>
                 <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
@@ -265,8 +261,8 @@ export const Dashboard: React.FC = () => {
     );
   }
 
-  // Surveyor-specific dashboard
-  if (profile?.role === "surveyor") {
+  // Encoder-specific dashboard
+  if (profile?.role === "encoder") {
     const awardedCount = applications.filter(
       (a) => a.status === "awarded",
     ).length;
@@ -277,10 +273,10 @@ export const Dashboard: React.FC = () => {
         <div className="flex-1 flex flex-col overflow-y-auto">
           <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between">
             <h1 className="text-xl font-bold text-slate-800 m-0">
-              Surveyor Workspace
+              Encoder Workspace
             </h1>
             <p className="text-xs text-slate-500 font-medium">
-              Logged as DAR Surveyor
+              Logged as DAR Encoder
             </p>
           </header>
           <main className="p-8 max-w-4xl space-y-6">
@@ -295,14 +291,10 @@ export const Dashboard: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-center">
                   <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
-                    Forwarded (Ready)
+                    Verified (Ready)
                   </span>
                   <p className="text-2xl font-extrabold text-amber-900 mt-1">
-                    {
-                      applications.filter(
-                        (a) => a.status === "forwarded_to_surveyor",
-                      ).length
-                    }
+                    {applications.filter((a) => a.status === "verified").length}
                   </p>
                 </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
@@ -378,7 +370,7 @@ export const Dashboard: React.FC = () => {
                   Land Verification Details
                 </h3>
                 <p className="text-xs text-slate-650 leading-relaxed">
-                  Your designated land Surveyor encodes exact geographic lot
+                  Your designated land Encoder encodes exact geographic lot
                   details, including coordinates and hectarage, directly linked
                   to your profile upon review.
                 </p>
@@ -388,9 +380,8 @@ export const Dashboard: React.FC = () => {
                   Official Requirements
                 </h3>
                 <p className="text-xs text-slate-650 leading-relaxed">
-                  Required credentials for submission include your Cedula, Birth
-                  Certificate, Barangay Certificate, and continuous 10-year
-                  residency documentation.
+                  Required credentials for submission include your Birth
+                  Certificate and any valid Government-Issued ID.
                 </p>
               </div>
             </div>
@@ -498,7 +489,7 @@ export const Dashboard: React.FC = () => {
                   {stats.activeTitles}
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Land titles encoded by surveyors
+                  Land titles encoded by encoders
                 </p>
               </div>
               <div className="h-12 w-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center">
@@ -569,8 +560,8 @@ export const Dashboard: React.FC = () => {
                       color: "bg-orange-500",
                     },
                     {
-                      key: "forwarded_to_surveyor",
-                      label: "Surveyor Stage",
+                      key: "verified",
+                      label: "Verified",
                       color: "bg-amber-500",
                     },
                     {
@@ -867,7 +858,7 @@ export const Dashboard: React.FC = () => {
                   <p className="font-semibold">No Land Title Encoded Yet</p>
                   <p className="text-xs mt-1 opacity-80">
                     This application is currently in the{" "}
-                    {selectedApp.status.replace("_", " ")} stage. A surveyor
+                    {selectedApp.status.replace("_", " ")} stage. An encoder
                     must verify and encode the title boundaries to generate a
                     CLOA record.
                   </p>
