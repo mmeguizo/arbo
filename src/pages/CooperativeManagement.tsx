@@ -200,7 +200,7 @@ export const CooperativeManagement: React.FC = () => {
       const selectedHead = formHeadId
         ? arbUsers.find((a) => a.uid === formHeadId)
         : null;
-      await addDoc(collection(db, "cooperatives"), {
+      const docRef = await addDoc(collection(db, "cooperatives"), {
         name: formName.trim(),
         address: formAddress.trim(),
         municipality: formMunicipality || null,
@@ -212,10 +212,12 @@ export const CooperativeManagement: React.FC = () => {
         createdAt: new Date().toISOString(),
       });
 
-      // If a head was selected, update their role to arbo_head and set arboId
+      // Promote the selected head to arbo_head
       if (formHeadId) {
-        // Note: we don't have the new arbo ID yet from addDoc, but we can query it
-        // For now, the ArboDashboard queries by headId which works
+        await updateDoc(doc(db, "users", formHeadId), {
+          role: "arbo_head",
+          arboId: docRef.id,
+        });
       }
 
       setShowCreateModal(false);
@@ -250,6 +252,22 @@ export const CooperativeManagement: React.FC = () => {
         headId: formHeadId || editingCoop.headId,
         headName: selectedHead?.name || editingCoop.headName,
       });
+
+      // Handle head role changes
+      if (formHeadId && formHeadId !== editingCoop.headId) {
+        // Demote old head to arb (if they existed)
+        if (editingCoop.headId) {
+          await updateDoc(doc(db, "users", editingCoop.headId), {
+            role: "arb",
+            arboId: null,
+          });
+        }
+        // Promote new head to arbo_head
+        await updateDoc(doc(db, "users", formHeadId), {
+          role: "arbo_head",
+          arboId: editingCoop.id,
+        });
+      }
 
       setEditingCoop(null);
       resetForm();
@@ -290,9 +308,21 @@ export const CooperativeManagement: React.FC = () => {
     }
   };
 
-  const removeMember = async (memberId: string) => {
+  const removeMember = async (member: CoopMember, coop: Cooperative) => {
     try {
-      await deleteDoc(doc(db, "cooperativeMembers", memberId));
+      await deleteDoc(doc(db, "cooperativeMembers", member.id));
+
+      // If the removed member was the head, clear the head reference and demote
+      if (member.userId === coop.headId) {
+        await updateDoc(doc(db, "cooperatives", coop.id), {
+          headId: "",
+          headName: "Unassigned",
+        });
+        await updateDoc(doc(db, "users", member.userId), {
+          role: "arb",
+          arboId: null,
+        });
+      }
     } catch (err) {
       console.error(err);
     }
@@ -632,7 +662,7 @@ export const CooperativeManagement: React.FC = () => {
                                           <td className="py-2 text-right">
                                             <button
                                               onClick={() =>
-                                                removeMember(member.id)
+                                                removeMember(member, coop)
                                               }
                                               className="text-red-400 hover:text-red-600 p-1 cursor-pointer"
                                               title="Remove member"
