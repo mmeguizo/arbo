@@ -36,7 +36,7 @@ interface UserProfile {
   uid: string;
   name: string;
   email: string;
-  role: "arb" | "staff" | "encoder" | "admin";
+  role: "arb" | "arbo_head" | "staff" | "encoder" | "admin";
   barangay: string;
   municipality: string;
   province: string;
@@ -54,7 +54,7 @@ export const AdminUsers: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"staff" | "encoder" | "admin">("staff");
+  const [role, setRole] = useState<"staff" | "encoder" | "admin" | "arbo_head">("staff");
   const [province, setProvince] = useState("Negros Occidental");
   const [barangay, setBarangay] = useState("Isabela");
   const [municipality, setMunicipality] = useState("");
@@ -66,24 +66,21 @@ export const AdminUsers: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      // Query to get Admin, Staff, & Encoder accounts
       const snap = await getDocs(collection(db, "users"));
       const list: UserProfile[] = [];
       snap.forEach((d) => {
         const u = d.data();
-        if (u.role && u.role !== "arb") {
-          list.push({
-            uid: d.id,
-            name: u.name || "Unnamed",
-            email: u.email || "",
-            role: u.role as "staff" | "encoder" | "admin",
-            barangay: u.barangay || "",
-            municipality: u.municipality || "",
-            province: u.province || "Negros Occidental",
-            createdAt: u.createdAt || "",
-            isActive: u.isActive !== false, // default true
-          });
-        }
+        list.push({
+          uid: d.id,
+          name: u.name || "Unnamed",
+          email: u.email || "",
+          role: (u.role as UserProfile["role"]) || "arb",
+          barangay: u.barangay || "",
+          municipality: u.municipality || "",
+          province: u.province || "Negros Occidental",
+          createdAt: u.createdAt || "",
+          isActive: u.isActive !== false,
+        });
       });
       setUsers(list);
     } catch (err) {

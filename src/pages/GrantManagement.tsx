@@ -27,15 +27,18 @@ import {
   Eye,
   AlertCircle,
   Building2,
+  Wrench,
+  Landmark,
 } from "lucide-react";
 
 interface Grant {
   id: string;
   beneficiaryId: string;
   beneficiaryName: string;
-  type: "cash" | "raw_materials";
+  type: "cash" | "raw_materials" | "loan" | "equipment";
   description: string;
   amount: number;
+  unitValue?: number;
   unit: string;
   dateProvided: string;
   reportCycle: "6_months" | "1_year";
@@ -46,6 +49,14 @@ interface Grant {
   isCoopGrant?: boolean;
   cooperativeId?: string;
   cooperativeName?: string;
+  interestRate?: number;
+  loanTermMonths?: number;
+  monthlyPayment?: number;
+  remainingBalance?: number;
+  equipmentItem?: string;
+  equipmentQuantity?: number;
+  splitAmount?: number;
+  totalGrantAmount?: number;
 }
 
 interface GrantReport {
@@ -79,7 +90,7 @@ export const GrantManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<
-    "all" | "cash" | "raw_materials"
+    "all" | "cash" | "raw_materials" | "loan" | "equipment"
   >("all");
 
   // Modal state
@@ -89,13 +100,21 @@ export const GrantManagement: React.FC = () => {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Form state
-  const [formType, setFormType] = useState<"cash" | "raw_materials">("cash");
+  const [formType, setFormType] = useState<
+    "cash" | "raw_materials" | "loan" | "equipment"
+  >("cash");
   const [formAmount, setFormAmount] = useState("");
   const [formUnit, setFormUnit] = useState("PHP");
+  const [formUnitValue, setFormUnitValue] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formCycle, setFormCycle] = useState<"6_months" | "1_year">("1_year");
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [formInterestRate, setFormInterestRate] = useState("");
+  const [formLoanTerm, setFormLoanTerm] = useState("12");
+  const [formEquipmentItem, setFormEquipmentItem] = useState("");
+  const [formEquipmentQty, setFormEquipmentQty] = useState("1");
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
 
   // Cooperative grant state
   const [grantTarget, setGrantTarget] = useState<"individual" | "cooperative">(
@@ -174,6 +193,15 @@ export const GrantManagement: React.FC = () => {
             isCoopGrant: data.isCoopGrant || false,
             cooperativeId: data.cooperativeId || null,
             cooperativeName: data.cooperativeName || null,
+            interestRate: data.interestRate,
+            loanTermMonths: data.loanTermMonths,
+            monthlyPayment: data.monthlyPayment,
+            remainingBalance: data.remainingBalance,
+            equipmentItem: data.equipmentItem,
+            equipmentQuantity: data.equipmentQuantity,
+            unitValue: data.unitValue,
+            splitAmount: data.splitAmount,
+            totalGrantAmount: data.totalGrantAmount,
           });
         });
         setGrants(list);
@@ -250,6 +278,12 @@ export const GrantManagement: React.FC = () => {
   const totalRawMaterials = grants.filter(
     (g) => g.type === "raw_materials",
   ).length;
+  const totalLoansOutstanding = grants
+    .filter((g) => g.type === "loan")
+    .reduce((s, g) => s + (g.remainingBalance ?? g.amount), 0);
+  const totalEquipmentValue = grants
+    .filter((g) => g.type === "equipment")
+    .reduce((s, g) => s + (g.unitValue ?? 0) * (g.equipmentQuantity ?? 1), 0);
   const totalARBsWithGrants = new Set(grants.map((g) => g.beneficiaryId)).size;
   const overdueCount = grants.filter((g) => g.status === "overdue").length;
   const totalReports = reports.length;
@@ -272,15 +306,21 @@ export const GrantManagement: React.FC = () => {
 
   const cashCount = grants.filter((g) => g.type === "cash").length;
   const rawCount = grants.filter((g) => g.type === "raw_materials").length;
+  const loanCount = grants.filter((g) => g.type === "loan").length;
+  const equipCount = grants.filter((g) => g.type === "equipment").length;
   const totalGrants = grants.length;
   const donutStyle = useMemo(() => {
     if (totalGrants === 0) return {};
-    const cashPct = totalGrants > 0 ? (cashCount / totalGrants) * 100 : 0;
-    const rawPct = totalGrants > 0 ? (rawCount / totalGrants) * 100 : 0;
+    const cashPct = (cashCount / totalGrants) * 100;
+    const rawPct = (rawCount / totalGrants) * 100;
+    const loanPct = (loanCount / totalGrants) * 100;
+    const cEnd = cashPct;
+    const rEnd = cEnd + rawPct;
+    const lEnd = rEnd + loanPct;
     return {
-      background: `conic-gradient(#10b981 0% ${cashPct}%, #f59e0b ${cashPct}% ${cashPct + rawPct}%)`,
+      background: `conic-gradient(#10b981 0% ${cEnd}%, #f59e0b ${cEnd}% ${rEnd}%, #6366f1 ${rEnd}% ${lEnd}%, #14b8a6 ${lEnd}% 100%)`,
     };
-  }, [totalGrants, cashCount, rawCount]);
+  }, [totalGrants, cashCount, rawCount, loanCount, equipCount]);
 
   const topARBs = useMemo(() => {
     const map = new Map<
@@ -325,7 +365,7 @@ export const GrantManagement: React.FC = () => {
       }
     } else {
       if (!selectedCoopId) {
-        setFormError("Please select a cooperative.");
+        setFormError("Please select an ARBO.");
         return;
       }
     }
@@ -333,6 +373,34 @@ export const GrantManagement: React.FC = () => {
       setFormError("Please enter a valid amount.");
       return;
     }
+    if (formType === "equipment" && !formEquipmentItem.trim()) {
+      setFormError("Please enter the equipment item name.");
+      return;
+    }
+    if (formType === "loan" && !formInterestRate) {
+      setFormError("Please enter the interest rate.");
+      return;
+    }
+
+    // Validate split amounts don't exceed total for coop grants
+    if (grantTarget === "cooperative") {
+      const splitTotal = Object.values(splitAmounts).reduce(
+        (s, v) => s + (parseFloat(v) || 0),
+        0,
+      );
+      const totalGrant = parseFloat(formAmount);
+      if (splitTotal > totalGrant) {
+        setFormError(
+          `Split total exceeds grant amount by ${formType === "cash" || formType === "loan" ? "₱" : ""}${(splitTotal - totalGrant).toLocaleString()}.`,
+        );
+        return;
+      }
+      if (splitTotal === 0) {
+        setFormError("Please enter split amounts for at least one member.");
+        return;
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -341,20 +409,60 @@ export const GrantManagement: React.FC = () => {
       const nextDue = new Date();
       nextDue.setMonth(nextDue.getMonth() + monthsToAdd);
 
+      const baseGrantData = {
+        type: formType,
+        description: formDescription.trim(),
+        unit: formUnit,
+        dateProvided,
+        reportCycle: formCycle,
+        nextReportDue: nextDue.toISOString(),
+        status: "active" as const,
+        createdAt: dateProvided,
+        createdBy: profile?.name || "Admin",
+      };
+
+      // Loan computed fields
+      const loanFields =
+        formType === "loan"
+          ? {
+              interestRate: parseFloat(formInterestRate) || 0,
+              loanTermMonths: parseInt(formLoanTerm) || 12,
+              monthlyPayment: Math.round(
+                (parseFloat(formAmount) *
+                  (1 + (parseFloat(formInterestRate) || 0) / 100)) /
+                  (parseInt(formLoanTerm) || 12),
+              ),
+              remainingBalance: parseFloat(formAmount),
+            }
+          : {};
+
+      // Equipment fields
+      const equipFields =
+        formType === "equipment"
+          ? {
+              equipmentItem: formEquipmentItem.trim(),
+              equipmentQuantity: parseInt(formEquipmentQty) || 1,
+              unitValue: parseFloat(formUnitValue) || 0,
+            }
+          : {};
+
+      // Unit value for materials
+      const materialValueField =
+        formType === "raw_materials" && formUnitValue
+          ? {
+              unitValue: parseFloat(formUnitValue) || 0,
+            }
+          : {};
+
       if (grantTarget === "individual") {
         await addDoc(collection(db, "grants"), {
+          ...baseGrantData,
+          ...loanFields,
+          ...equipFields,
+          ...materialValueField,
           beneficiaryId: selectedARB!.uid,
           beneficiaryName: selectedARB!.name,
-          type: formType,
-          description: formDescription.trim(),
           amount: parseFloat(formAmount),
-          unit: formUnit,
-          dateProvided,
-          reportCycle: formCycle,
-          nextReportDue: nextDue.toISOString(),
-          status: "active",
-          createdAt: dateProvided,
-          createdBy: profile?.name || "Admin",
           isCoopGrant: false,
           cooperativeId: null,
           cooperativeName: null,
@@ -362,57 +470,26 @@ export const GrantManagement: React.FC = () => {
       } else {
         const coopMembers = getSelectedCoopMembers();
         const selectedCoop = cooperatives.find((c) => c.id === selectedCoopId);
+        const totalGrantAmount = parseFloat(formAmount);
 
-        if (formType === "cash") {
-          const totalAmount = parseFloat(formAmount);
-          const perMember = Math.floor(totalAmount / coopMembers.length);
-          const remainder = totalAmount - perMember * coopMembers.length;
+        for (const member of coopMembers) {
+          const memberAmount = parseFloat(splitAmounts[member.userId]) || 0;
+          if (memberAmount <= 0) continue; // skip members with no allocation
 
-          for (let i = 0; i < coopMembers.length; i++) {
-            const member = coopMembers[i];
-            await addDoc(collection(db, "grants"), {
-              beneficiaryId: member.userId,
-              beneficiaryName: member.userName,
-              type: formType,
-              description: formDescription.trim(),
-              amount: perMember + (i === 0 ? remainder : 0),
-              unit: formUnit,
-              dateProvided,
-              reportCycle: formCycle,
-              nextReportDue: nextDue.toISOString(),
-              status: "active",
-              createdAt: dateProvided,
-              createdBy: profile?.name || "Admin",
-              isCoopGrant: true,
-              cooperativeId: selectedCoopId,
-              cooperativeName: selectedCoop?.name || "",
-            });
-          }
-        } else {
-          const totalQty = parseInt(formAmount) || 0;
-          const perMember = Math.floor(totalQty / coopMembers.length);
-          const remainder = totalQty - perMember * coopMembers.length;
-
-          for (let i = 0; i < coopMembers.length; i++) {
-            const member = coopMembers[i];
-            await addDoc(collection(db, "grants"), {
-              beneficiaryId: member.userId,
-              beneficiaryName: member.userName,
-              type: formType,
-              description: formDescription.trim(),
-              amount: perMember + (i === 0 ? remainder : 0),
-              unit: formUnit,
-              dateProvided,
-              reportCycle: formCycle,
-              nextReportDue: nextDue.toISOString(),
-              status: "active",
-              createdAt: dateProvided,
-              createdBy: profile?.name || "Admin",
-              isCoopGrant: true,
-              cooperativeId: selectedCoopId,
-              cooperativeName: selectedCoop?.name || "",
-            });
-          }
+          await addDoc(collection(db, "grants"), {
+            ...baseGrantData,
+            ...loanFields,
+            ...equipFields,
+            ...materialValueField,
+            beneficiaryId: member.userId,
+            beneficiaryName: member.userName,
+            amount: memberAmount,
+            splitAmount: memberAmount,
+            totalGrantAmount,
+            isCoopGrant: true,
+            cooperativeId: selectedCoopId,
+            cooperativeName: selectedCoop?.name || "",
+          });
         }
       }
 
@@ -423,8 +500,14 @@ export const GrantManagement: React.FC = () => {
       setFormType("cash");
       setFormAmount("");
       setFormUnit("PHP");
+      setFormUnitValue("");
       setFormDescription("");
       setFormCycle("1_year");
+      setFormInterestRate("");
+      setFormLoanTerm("12");
+      setFormEquipmentItem("");
+      setFormEquipmentQty("1");
+      setSplitAmounts({});
     } catch (err) {
       console.error(err);
       setFormError("Failed to create grant.");
@@ -510,7 +593,7 @@ export const GrantManagement: React.FC = () => {
                 <div className="flex items-center gap-1.5 mb-2">
                   <DollarSign size={14} className="text-emerald-600" />
                   <span className="text-[9px] font-bold text-slate-400 uppercase">
-                    Cash Distributed
+                    Cash
                   </span>
                 </div>
                 <p className="text-xl font-extrabold text-emerald-900">
@@ -521,7 +604,7 @@ export const GrantManagement: React.FC = () => {
                 <div className="flex items-center gap-1.5 mb-2">
                   <Package size={14} className="text-amber-600" />
                   <span className="text-[9px] font-bold text-slate-400 uppercase">
-                    Material Grants
+                    Materials
                   </span>
                 </div>
                 <p className="text-xl font-extrabold text-amber-900">
@@ -530,13 +613,24 @@ export const GrantManagement: React.FC = () => {
               </div>
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 text-left">
                 <div className="flex items-center gap-1.5 mb-2">
-                  <Users size={14} className="text-indigo-600" />
+                  <Landmark size={14} className="text-indigo-600" />
                   <span className="text-[9px] font-bold text-slate-400 uppercase">
-                    ARBs w/ Grants
+                    Loans Outstanding
                   </span>
                 </div>
                 <p className="text-xl font-extrabold text-indigo-900">
-                  {totalARBsWithGrants}
+                  ₱{totalLoansOutstanding.toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 text-left">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Wrench size={14} className="text-teal-600" />
+                  <span className="text-[9px] font-bold text-slate-400 uppercase">
+                    Equipment Value
+                  </span>
+                </div>
+                <p className="text-xl font-extrabold text-teal-900">
+                  ₱{totalEquipmentValue.toLocaleString()}
                 </p>
               </div>
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 text-left">
@@ -548,17 +642,6 @@ export const GrantManagement: React.FC = () => {
                 </div>
                 <p className="text-xl font-extrabold text-red-700">
                   {overdueCount}
-                </p>
-              </div>
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 text-left">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <FileText size={14} className="text-blue-600" />
-                  <span className="text-[9px] font-bold text-slate-400 uppercase">
-                    Reports
-                  </span>
-                </div>
-                <p className="text-xl font-extrabold text-blue-900">
-                  {totalReports}
                 </p>
               </div>
             </div>
@@ -633,6 +716,20 @@ export const GrantManagement: React.FC = () => {
                           {rawCount}
                         </span>
                       </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="h-2.5 w-2.5 rounded-full bg-indigo-500"></div>
+                        <span className="text-slate-600">Loans</span>
+                        <span className="font-bold text-slate-800">
+                          {loanCount}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="h-2.5 w-2.5 rounded-full bg-teal-500"></div>
+                        <span className="text-slate-600">Equipment</span>
+                        <span className="font-bold text-slate-800">
+                          {equipCount}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -697,6 +794,8 @@ export const GrantManagement: React.FC = () => {
                       { v: "all", label: "All" },
                       { v: "cash", label: "Cash" },
                       { v: "raw_materials", label: "Materials" },
+                      { v: "loan", label: "Loans" },
+                      { v: "equipment", label: "Equipment" },
                     ] as const
                   ).map(({ v, label }) => (
                     <button
@@ -767,15 +866,31 @@ export const GrantManagement: React.FC = () => {
                             </td>
                             <td className="px-6 py-4">
                               <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${g.type === "cash" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  g.type === "cash"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : g.type === "loan"
+                                      ? "bg-indigo-50 text-indigo-700"
+                                      : g.type === "equipment"
+                                        ? "bg-teal-50 text-teal-700"
+                                        : "bg-amber-50 text-amber-700"
+                                }`}
                               >
-                                {g.type === "cash" ? "Cash" : "Materials"}
+                                {g.type === "cash"
+                                  ? "Cash"
+                                  : g.type === "loan"
+                                    ? "Loan"
+                                    : g.type === "equipment"
+                                      ? "Equipment"
+                                      : "Materials"}
                               </span>
                             </td>
                             <td className="px-6 py-4 font-bold text-slate-800">
-                              {g.type === "cash"
+                              {g.type === "cash" || g.type === "loan"
                                 ? `₱${g.amount.toLocaleString()}`
-                                : `${g.amount} ${g.unit}`}
+                                : g.type === "equipment"
+                                  ? `${g.equipmentQuantity ?? 1}x ${g.equipmentItem || g.description || "—"}`
+                                  : `${g.amount} ${g.unit}`}
                             </td>
                             <td className="px-6 py-4 text-xs text-slate-600 max-w-xs truncate">
                               {g.description || "—"}
@@ -853,7 +968,7 @@ export const GrantManagement: React.FC = () => {
                     }}
                     className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${grantTarget === "cooperative" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
                   >
-                    Cooperative
+                    ARBO
                   </button>
                 </div>
               </div>
@@ -888,14 +1003,14 @@ export const GrantManagement: React.FC = () => {
               {grantTarget === "cooperative" && (
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
-                    Cooperative
+                    ARBO
                   </label>
                   <select
                     value={selectedCoopId || ""}
                     onChange={(e) => setSelectedCoopId(e.target.value || null)}
                     className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   >
-                    <option value="">Select a cooperative...</option>
+                    <option value="">Select an ARBO...</option>
                     {cooperatives.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name} ({c.municipality}) —{" "}
@@ -910,44 +1025,70 @@ export const GrantManagement: React.FC = () => {
                   {selectedCoopId && selectedCoopMembers.length > 0 && (
                     <div className="mt-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
                       <p className="text-[10px] font-bold text-indigo-700 mb-1.5">
-                        Split Preview ({selectedCoopMembers.length} members):
+                        Split Amounts ({selectedCoopMembers.length} members):
                       </p>
-                      <div className="space-y-1">
-                        {selectedCoopMembers.map((m) => (
-                          <div
-                            key={m.userId}
-                            className="flex items-center justify-between text-xs text-slate-600"
-                          >
-                            <span>{m.userName}</span>
-                            {formAmount && parseFloat(formAmount) > 0 && (
-                              <span className="font-bold text-indigo-700">
-                                {formType === "cash"
-                                  ? `₱${Math.floor(parseFloat(formAmount) / selectedCoopMembers.length).toLocaleString()}`
-                                  : `${Math.floor(parseInt(formAmount) / selectedCoopMembers.length)} ${formUnit}`}
+                      <div className="space-y-1.5">
+                        {selectedCoopMembers.map((m) => {
+                          const val = splitAmounts[m.userId] || "";
+                          return (
+                            <div
+                              key={m.userId}
+                              className="flex items-center gap-2 text-xs"
+                            >
+                              <span className="text-slate-600 w-24 truncate">
+                                {m.userName}
                               </span>
-                            )}
-                          </div>
-                        ))}
-                        {formAmount &&
-                          parseFloat(formAmount) > 0 &&
-                          grantTarget === "cooperative" && (
-                            <p className="text-[10px] text-indigo-500 mt-1 pt-1 border-t border-indigo-100">
-                              Total:{" "}
-                              {formType === "cash"
-                                ? `₱${parseInt(formAmount).toLocaleString()}`
-                                : `${formAmount} ${formUnit}`}{" "}
-                              ÷ {selectedCoopMembers.length} ={" "}
-                              {formType === "cash"
-                                ? `₱${Math.floor(parseFloat(formAmount) / selectedCoopMembers.length).toLocaleString()}`
-                                : `${Math.floor(parseInt(formAmount) / selectedCoopMembers.length)} ${formUnit}`}{" "}
-                              each
-                              {parseFloat(formAmount) %
-                                selectedCoopMembers.length >
-                                0 &&
-                                ` (${parseFloat(formAmount) % selectedCoopMembers.length} remainder to 1st member)`}
-                            </p>
-                          )}
+                              <input
+                                type="number"
+                                placeholder={
+                                  formType === "cash" || formType === "loan"
+                                    ? "₱ amount"
+                                    : "qty"
+                                }
+                                value={val}
+                                onChange={(e) =>
+                                  setSplitAmounts((prev) => ({
+                                    ...prev,
+                                    [m.userId]: e.target.value,
+                                  }))
+                                }
+                                className="flex-1 rounded-lg border border-indigo-200 bg-white py-1.5 px-2 text-xs focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
+                      {formAmount &&
+                        parseFloat(formAmount) > 0 &&
+                        (() => {
+                          const splitTotal = Object.values(splitAmounts).reduce(
+                            (s, v) => s + (parseFloat(v) || 0),
+                            0,
+                          );
+                          const totalGrant = parseFloat(formAmount);
+                          const remaining = totalGrant - splitTotal;
+                          const isOver = remaining < 0;
+                          return (
+                            <p
+                              className={`text-[10px] mt-2 pt-1.5 border-t border-indigo-100 font-bold ${isOver ? "text-red-600" : remaining === 0 ? "text-emerald-600" : "text-indigo-600"}`}
+                            >
+                              Total:{" "}
+                              {formType === "cash" || formType === "loan"
+                                ? `₱${totalGrant.toLocaleString()}`
+                                : totalGrant}{" "}
+                              | Allocated:{" "}
+                              {formType === "cash" || formType === "loan"
+                                ? `₱${splitTotal.toLocaleString()}`
+                                : splitTotal}{" "}
+                              |
+                              {isOver
+                                ? ` Over by ${formType === "cash" || formType === "loan" ? "₱" : ""}${Math.abs(remaining).toLocaleString()}`
+                                : remaining === 0
+                                  ? " Fully allocated ✓"
+                                  : ` Remaining: ${formType === "cash" || formType === "loan" ? "₱" : ""}${remaining.toLocaleString()}`}
+                            </p>
+                          );
+                        })()}
                     </div>
                   )}
                 </div>
@@ -957,13 +1098,13 @@ export const GrantManagement: React.FC = () => {
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
                   Grant Type
                 </label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => {
                       setFormType("cash");
                       setFormUnit("PHP");
                     }}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${formType === "cash" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer min-w-[70px] ${formType === "cash" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
                   >
                     Cash
                   </button>
@@ -972,21 +1113,142 @@ export const GrantManagement: React.FC = () => {
                       setFormType("raw_materials");
                       setFormUnit("bags");
                     }}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${formType === "raw_materials" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer min-w-[70px] ${formType === "raw_materials" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
                   >
-                    Raw Materials
+                    Materials
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFormType("loan");
+                      setFormUnit("PHP");
+                    }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer min-w-[70px] ${formType === "loan" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
+                  >
+                    Loan
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFormType("equipment");
+                      setFormUnit("units");
+                    }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer min-w-[70px] ${formType === "equipment" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
+                  >
+                    Equipment
                   </button>
                 </div>
               </div>
 
+              {/* Equipment-specific: item name + quantity */}
+              {formType === "equipment" && (
+                <>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                      Equipment Item
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Hand Tractor, Water Pump"
+                      value={formEquipmentItem}
+                      onChange={(e) => setFormEquipmentItem(e.target.value)}
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                        Quantity
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formEquipmentQty}
+                        onChange={(e) => setFormEquipmentQty(e.target.value)}
+                        className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                        Unit Value (₱)
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="Price per unit"
+                        value={formUnitValue}
+                        onChange={(e) => setFormUnitValue(e.target.value)}
+                        className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Loan-specific: interest rate + term */}
+              {formType === "loan" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                      Interest Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g., 12"
+                      value={formInterestRate}
+                      onChange={(e) => setFormInterestRate(e.target.value)}
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                      Term (Months)
+                    </label>
+                    <select
+                      value={formLoanTerm}
+                      onChange={(e) => setFormLoanTerm(e.target.value)}
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      {[6, 12, 18, 24, 36].map((m) => (
+                        <option key={m} value={m}>
+                          {m} months
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Raw Materials: unit value */}
+              {formType === "raw_materials" && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                    Unit Value (₱, optional)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Price per unit (for reports)"
+                    value={formUnitValue}
+                    onChange={(e) => setFormUnitValue(e.target.value)}
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
                   {grantTarget === "cooperative" ? "Total " : ""}
-                  {formType === "cash" ? "Amount (₱)" : "Quantity"}
+                  {formType === "cash" || formType === "loan"
+                    ? "Amount (₱)"
+                    : formType === "equipment"
+                      ? "Total Value (₱)"
+                      : "Quantity"}
                 </label>
                 <input
                   type="number"
-                  placeholder={formType === "cash" ? "e.g., 10000" : "e.g., 5"}
+                  placeholder={
+                    formType === "cash" || formType === "loan"
+                      ? "e.g., 10000"
+                      : "e.g., 5"
+                  }
                   value={formAmount}
                   onChange={(e) => setFormAmount(e.target.value)}
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"

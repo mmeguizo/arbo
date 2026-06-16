@@ -158,7 +158,7 @@ export const CooperativeManagement: React.FC = () => {
 
   const createCooperative = async () => {
     if (!formName.trim()) {
-      setFormError("Cooperative name is required.");
+      setFormError("ARBO name is required.");
       return;
     }
     if (!formMunicipality) {
@@ -184,7 +184,7 @@ export const CooperativeManagement: React.FC = () => {
       resetForm();
     } catch (err) {
       console.error(err);
-      setFormError("Failed to create cooperative.");
+      setFormError("Failed to create ARBO.");
     } finally {
       setSubmitting(false);
     }
@@ -192,7 +192,7 @@ export const CooperativeManagement: React.FC = () => {
 
   const updateCooperative = async () => {
     if (!editingCoop || !formName.trim()) {
-      setFormError("Cooperative name is required.");
+      setFormError("ARBO name is required.");
       return;
     }
     setFormError(null);
@@ -210,15 +210,14 @@ export const CooperativeManagement: React.FC = () => {
       resetForm();
     } catch (err) {
       console.error(err);
-      setFormError("Failed to update cooperative.");
+      setFormError("Failed to update ARBO.");
     } finally {
       setSubmitting(false);
     }
   };
 
   const deleteCooperative = async (coop: Cooperative) => {
-    if (!confirm(`Delete cooperative "${coop.name}" and all its members?`))
-      return;
+    if (!confirm(`Delete ARBO "${coop.name}" and all its members?`)) return;
     try {
       // Remove all members first
       const coopMembers = getCoopMembers(coop.id);
@@ -295,29 +294,31 @@ export const CooperativeManagement: React.FC = () => {
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between z-10 shrink-0">
           <div className="text-left">
             <p className="text-[10px] uppercase font-bold tracking-widest text-emerald-800 m-0">
-              Cooperative Registry
+              ARBO Registry
             </p>
             <h1 className="text-xl font-bold text-slate-900 mt-0.5 mb-0">
-              Cooperative Management
+              ARBO Management
             </h1>
           </div>
-          <button
-            onClick={() => {
-              setShowCreateModal(true);
-              resetForm();
-            }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-2 px-4 text-xs font-bold transition-all cursor-pointer"
-          >
-            <Plus size={14} />
-            Create Cooperative
-          </button>
+          {profile?.role === "admin" && (
+            <button
+              onClick={() => {
+                setShowCreateModal(true);
+                resetForm();
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-2 px-4 text-xs font-bold transition-all cursor-pointer"
+            >
+              <Plus size={14} />
+              Create ARBO
+            </button>
+          )}
         </header>
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center space-y-3">
               <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-800 border-t-transparent"></div>
-              <p className="text-xs text-slate-500">Loading cooperatives...</p>
+              <p className="text-xs text-slate-500">Loading ARBOs...</p>
             </div>
           </div>
         ) : (
@@ -328,7 +329,7 @@ export const CooperativeManagement: React.FC = () => {
                 <div className="flex items-center gap-2 mb-2">
                   <Building2 size={16} className="text-emerald-700" />
                   <span className="text-[10px] font-bold text-slate-400 uppercase">
-                    Total Cooperatives
+                    Total ARBOs
                   </span>
                 </div>
                 <p className="text-2xl font-extrabold text-emerald-900">
@@ -364,11 +365,11 @@ export const CooperativeManagement: React.FC = () => {
               <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
                 <Building2 size={32} className="text-slate-300 mx-auto mb-3" />
                 <h3 className="text-sm font-bold text-slate-500 mb-1">
-                  No Cooperatives Yet
+                  No ARBOs Yet
                 </h3>
                 <p className="text-xs text-slate-400 max-w-md mx-auto">
-                  Create cooperatives to group ARB members within the same
-                  municipality for collective grant distribution.
+                  Create ARBOs to group ARB members within the same municipality
+                  for collective grant distribution.
                 </p>
               </div>
             ) : (
@@ -524,7 +525,7 @@ export const CooperativeManagement: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 my-auto">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-emerald-50">
               <h3 className="font-bold text-sm text-slate-900">
-                {editingCoop ? "Edit Cooperative" : "Create Cooperative"}
+                {editingCoop ? "Edit ARBO" : "Create ARBO"}
               </h3>
               <button
                 onClick={() => {
@@ -542,11 +543,11 @@ export const CooperativeManagement: React.FC = () => {
               {/* Name */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
-                  Cooperative Name
+                  ARBO Name
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g., San Jose Farmers Cooperative"
+                  placeholder="e.g., San Jose Farmers ARBO"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -589,7 +590,7 @@ export const CooperativeManagement: React.FC = () => {
               {/* Logo Upload */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
-                  Cooperative Logo
+                  ARBO Logo
                 </label>
                 <div className="flex items-center gap-3">
                   <div className="h-16 w-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden">

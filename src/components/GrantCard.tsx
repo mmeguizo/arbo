@@ -25,11 +25,13 @@ import {
   X,
   File,
   Building2,
+  Landmark,
+  Wrench,
 } from "lucide-react";
 
 interface Grant {
   id: string;
-  type: "cash" | "raw_materials";
+  type: "cash" | "raw_materials" | "loan" | "equipment";
   description: string;
   amount: number;
   unit: string;
@@ -41,6 +43,12 @@ interface Grant {
   cooperativeId?: string;
   cooperativeName?: string;
   isCoopGrant?: boolean;
+  interestRate?: number;
+  loanTermMonths?: number;
+  remainingBalance?: number;
+  equipmentItem?: string;
+  equipmentQuantity?: number;
+  unitValue?: number;
 }
 
 interface GrantReport {
@@ -211,11 +219,19 @@ export const GrantCard: React.FC<{
             className={`h-12 w-12 rounded-xl flex items-center justify-center shrink-0 ${
               grant.type === "cash"
                 ? "bg-emerald-100 text-emerald-700"
-                : "bg-amber-100 text-amber-700"
+                : grant.type === "loan"
+                  ? "bg-indigo-100 text-indigo-700"
+                  : grant.type === "equipment"
+                    ? "bg-teal-100 text-teal-700"
+                    : "bg-amber-100 text-amber-700"
             }`}
           >
             {grant.type === "cash" ? (
               <DollarSign size={22} />
+            ) : grant.type === "loan" ? (
+              <Landmark size={22} />
+            ) : grant.type === "equipment" ? (
+              <Wrench size={22} />
             ) : (
               <Package size={22} />
             )}
@@ -226,10 +242,20 @@ export const GrantCard: React.FC<{
                 className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
                   grant.type === "cash"
                     ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                    : grant.type === "loan"
+                      ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                      : grant.type === "equipment"
+                        ? "bg-teal-50 text-teal-700 border border-teal-200"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
                 }`}
               >
-                {grant.type === "cash" ? "Cash Grant" : "Raw Materials"}
+                {grant.type === "cash"
+                  ? "Cash Grant"
+                  : grant.type === "loan"
+                    ? "Loan"
+                    : grant.type === "equipment"
+                      ? "Equipment"
+                      : "Raw Materials"}
               </span>
               {grant.isCoopGrant && grant.cooperativeName && (
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
@@ -247,8 +273,17 @@ export const GrantCard: React.FC<{
             <h3 className="font-bold text-slate-900 text-sm">
               {grant.type === "cash"
                 ? `₱${grant.amount.toLocaleString()} ${grant.unit || "PHP"}`
-                : `${grant.amount} ${grant.unit || "units"}`}
+                : grant.type === "loan"
+                  ? `₱${grant.amount.toLocaleString()} · ${grant.interestRate ?? 0}% · ${grant.loanTermMonths ?? 12}mo`
+                  : grant.type === "equipment"
+                    ? `${grant.equipmentQuantity ?? 1}x ${grant.equipmentItem || "Equipment"}`
+                    : `${grant.amount} ${grant.unit || "units"}`}
             </h3>
+            {grant.type === "loan" && grant.remainingBalance !== undefined && (
+              <p className="text-[10px] text-indigo-600 mt-0.5">
+                Remaining: ₱{grant.remainingBalance.toLocaleString()}
+              </p>
+            )}
             <p className="text-xs text-slate-500 mt-0.5">
               {grant.description || "No description"}
             </p>
@@ -426,7 +461,13 @@ export const GrantCard: React.FC<{
                     Submit Progress Report
                   </h3>
                   <p className="text-[10px] text-slate-500">
-                    {grant.type === "cash" ? "Cash Grant" : "Raw Materials"}
+                    {grant.type === "cash"
+                      ? "Cash Grant"
+                      : grant.type === "loan"
+                        ? "Loan"
+                        : grant.type === "equipment"
+                          ? "Equipment"
+                          : "Raw Materials"}
                     {grant.isCoopGrant && ` · ${grant.cooperativeName}`}
                   </p>
                 </div>

@@ -17,7 +17,7 @@ import {
 
 interface Grant {
   id: string;
-  type: "cash" | "raw_materials";
+  type: "cash" | "raw_materials" | "loan" | "equipment";
   description: string;
   amount: number;
   unit: string;
@@ -29,6 +29,12 @@ interface Grant {
   cooperativeId?: string;
   cooperativeName?: string;
   isCoopGrant?: boolean;
+  interestRate?: number;
+  loanTermMonths?: number;
+  remainingBalance?: number;
+  equipmentItem?: string;
+  equipmentQuantity?: number;
+  unitValue?: number;
 }
 
 interface CoopMember {
@@ -91,6 +97,12 @@ export const MyGrants: React.FC = () => {
             cooperativeId: data.cooperativeId,
             cooperativeName: data.cooperativeName,
             isCoopGrant: data.isCoopGrant,
+            interestRate: data.interestRate,
+            loanTermMonths: data.loanTermMonths,
+            remainingBalance: data.remainingBalance,
+            equipmentItem: data.equipmentItem,
+            equipmentQuantity: data.equipmentQuantity,
+            unitValue: data.unitValue,
           });
         });
         list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -230,7 +242,7 @@ export const MyGrants: React.FC = () => {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[10px] font-bold uppercase bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                        My Cooperative
+                        My ARBO
                       </span>
                     </div>
                     <h3 className="font-bold text-slate-900 text-sm">

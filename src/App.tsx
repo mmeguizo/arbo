@@ -23,6 +23,9 @@ import { Reports } from "./pages/Reports";
 import { MyGrants } from "./pages/MyGrants";
 import { GrantManagement } from "./pages/GrantManagement";
 import { CooperativeManagement } from "./pages/CooperativeManagement";
+import { ArboDashboard } from "./pages/ArboDashboard";
+import { TrainingManagement } from "./pages/TrainingManagement";
+import { MyTrainings } from "./pages/MyTrainings";
 
 // A small gatekeeper component that routes authenticated users to their natural landing page
 const AuthRedirect: React.FC = () => {
@@ -43,6 +46,10 @@ const AuthRedirect: React.FC = () => {
   // Route based on role
   if (profile?.role === "arb") {
     return <Navigate to="/my-application" replace />;
+  }
+
+  if (profile?.role === "arbo_head") {
+    return <Navigate to="/arbo-dashboard" replace />;
   }
 
   // Official roles go to Admin/Staff/Encoder Dashboard
@@ -85,6 +92,15 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["arb"]}>
                   <MyGrants />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/my-trainings"
+              element={
+                <ProtectedRoute allowedRoles={["arb", "arbo_head"]}>
+                  <MyTrainings />
                 </ProtectedRoute>
               }
             />
@@ -146,8 +162,26 @@ function App() {
             <Route
               path="/cooperatives"
               element={
-                <ProtectedRoute allowedRoles={["admin"]}>
+                <ProtectedRoute allowedRoles={["admin", "staff"]}>
                   <CooperativeManagement />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/arbo-dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["arbo_head"]}>
+                  <ArboDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/trainings"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <TrainingManagement />
                 </ProtectedRoute>
               }
             />

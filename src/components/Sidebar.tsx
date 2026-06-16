@@ -15,6 +15,7 @@ import {
   TrendingUp,
   ClipboardList,
   Building2,
+  GraduationCap,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -43,6 +44,17 @@ export const Sidebar: React.FC = () => {
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "My CLOA Record", path: "/my-application", icon: FileText },
         { label: "My Grants", path: "/my-grants", icon: TrendingUp },
+        { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
+      ];
+    }
+
+    if (role === "arbo_head") {
+      return [
+        { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
+        { label: "ARBO Dashboard", path: "/arbo-dashboard", icon: Building2 },
+        { label: "My CLOA Record", path: "/my-application", icon: FileText },
+        { label: "My Grants", path: "/my-grants", icon: TrendingUp },
+        { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
       ];
     }
 
@@ -72,7 +84,8 @@ export const Sidebar: React.FC = () => {
         { label: "Search Registry", path: "/search", icon: Search },
         { label: "Analytics & Reports", path: "/reports", icon: TrendingUp },
         { label: "Grant Management", path: "/grants", icon: TrendingUp },
-        { label: "Cooperatives", path: "/cooperatives", icon: Building2 },
+        { label: "Trainings", path: "/trainings", icon: GraduationCap },
+        { label: "ARBOs", path: "/cooperatives", icon: Building2 },
         { label: "System Users", path: "/accounts", icon: Settings },
         { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
       ];

@@ -30,7 +30,10 @@ export interface Notification {
     | "awarded"
     | "disputed"
     | "correction_needed"
-    | "correction_resolved";
+    | "correction_resolved"
+    | "training_assigned"
+    | "training_reminder"
+    | "training_acknowledged";
   title: string;
   message: string;
   applicationId: string | null;
