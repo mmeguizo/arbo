@@ -22,6 +22,9 @@ import {
   XCircle,
   Clock,
   Calendar,
+  ChevronDown,
+  ChevronUp,
+  Link as LinkIcon,
 } from "lucide-react";
 
 interface CoopMember {
@@ -304,6 +307,7 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
   const [trainings, setTrainings] = useState<any[]>([]);
   const [acks, setAcks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedTraining, setExpandedTraining] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubT = onSnapshot(collection(db, "trainings"), (snap) => {
@@ -313,7 +317,6 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
         const memberIds = new Set(members.map((m) => m.userId));
         const assignedIds: string[] = data.assignedUserIds || [];
         const assignedCoops: string[] = data.assignedCoopIds || [];
-        // Show if any member is directly assigned OR this ARBO is assigned
         if (
           assignedIds.some((id: string) => memberIds.has(id)) ||
           assignedCoops.includes(arboId)
@@ -388,57 +391,145 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
         const declinedMembers = members.filter(
           (m) => getAck(t.id, m.userId)?.status === "declined",
         );
+        const isExpanded = expandedTraining === t.id;
         return (
           <div
             key={t.id}
-            className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5"
+            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
           >
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">{t.name}</h3>
-                <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                  <Calendar size={10} /> {new Date(t.date).toLocaleDateString()}
-                </p>
+            {/* Collapsed header */}
+            <div
+              onClick={() => setExpandedTraining(isExpanded ? null : t.id)}
+              className="p-5 cursor-pointer hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">{t.name}</h3>
+                  <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                    <Calendar size={10} />{" "}
+                    {new Date(t.date).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.status === "completed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}
+                  >
+                    {t.status === "completed" ? "Completed" : "Ongoing"}
+                  </span>
+                  <button className="text-slate-400">
+                    {isExpanded ? (
+                      <ChevronUp size={18} />
+                    ) : (
+                      <ChevronDown size={18} />
+                    )}
+                  </button>
+                </div>
               </div>
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.status === "completed" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"}`}
-              >
-                {t.status === "completed" ? "Completed" : "Ongoing"}
-              </span>
+              <div className="flex gap-3 text-xs">
+                <span className="text-emerald-600 font-bold flex items-center gap-1">
+                  <CheckCircle2 size={12} /> {ackMembers.length} Attending
+                </span>
+                <span className="text-amber-600 font-bold flex items-center gap-1">
+                  <Clock size={12} /> {pendingMembers.length} Pending
+                </span>
+                <span className="text-red-500 font-bold flex items-center gap-1">
+                  <XCircle size={12} /> {declinedMembers.length} Declined
+                </span>
+              </div>
             </div>
-            <div className="flex gap-3 text-xs mb-3">
-              <span className="text-emerald-600 font-bold flex items-center gap-1">
-                <CheckCircle2 size={12} /> {ackMembers.length} Attending
-              </span>
-              <span className="text-amber-600 font-bold flex items-center gap-1">
-                <Clock size={12} /> {pendingMembers.length} Pending
-              </span>
-              <span className="text-red-500 font-bold flex items-center gap-1">
-                <XCircle size={12} /> {declinedMembers.length} Declined
-              </span>
-            </div>
-            {pendingMembers.length > 0 && (
-              <div className="border-t border-slate-100 pt-3">
-                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">
-                  Not Yet Acknowledged
-                </p>
-                <div className="space-y-1">
-                  {pendingMembers.map((m) => (
-                    <div
-                      key={m.userId}
-                      className="flex items-center justify-between text-xs bg-amber-50 rounded-lg px-3 py-1.5"
-                    >
-                      <span className="font-bold text-slate-700">
-                        {m.userName}
-                      </span>
-                      <button
-                        onClick={() => sendNudge(m.userId, t.name)}
-                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
-                      >
-                        <Send size={10} /> Nudge
-                      </button>
+
+            {/* Expanded detail */}
+            {isExpanded && (
+              <div className="border-t border-slate-100 px-5 pb-5 pt-4 space-y-4">
+                {/* Purpose + links */}
+                {t.purpose && (
+                  <div className="text-xs text-slate-600">
+                    <p className="font-bold text-slate-700 mb-1">Purpose:</p>
+                    <p>{t.purpose}</p>
+                  </div>
+                )}
+                {t.documentLinks?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1">
+                      Documents / Links:
+                    </p>
+                    <div className="space-y-1">
+                      {t.documentLinks.map((link: string, i: number) => (
+                        <a
+                          key={i}
+                          href={link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800"
+                        >
+                          <LinkIcon size={10} /> {link}
+                        </a>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                )}
+
+                {/* All members with ack status */}
+                <div>
+                  <p className="text-xs font-bold text-slate-700 mb-2">
+                    Acknowledgement Status ({members.length} members)
+                  </p>
+                  <div className="space-y-1.5">
+                    {members.map((m) => {
+                      const ack = getAck(t.id, m.userId);
+                      return (
+                        <div
+                          key={m.userId}
+                          className="bg-slate-50 rounded-lg px-3 py-2 text-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-700">
+                                {m.userName}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                  !ack
+                                    ? "bg-amber-100 text-amber-700"
+                                    : ack.status === "acknowledged"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : "bg-red-100 text-red-700"
+                                }`}
+                              >
+                                {!ack
+                                  ? "Pending"
+                                  : ack.status === "acknowledged"
+                                    ? "✓ Attending"
+                                    : "✗ Declined"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {ack?.acknowledgedAt && (
+                                <span className="text-[10px] text-slate-400">
+                                  {new Date(
+                                    ack.acknowledgedAt,
+                                  ).toLocaleDateString()}
+                                </span>
+                              )}
+                              {(!ack || ack.status === "pending") && (
+                                <button
+                                  onClick={() => sendNudge(m.userId, t.name)}
+                                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Send size={10} /> Nudge
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {ack?.status === "declined" && ack?.reason && (
+                            <div className="mt-1.5 pt-1.5 border-t border-red-100 text-[10px] text-red-600 italic">
+                              Reason: {ack.reason}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
