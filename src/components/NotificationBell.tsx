@@ -50,8 +50,11 @@ export const NotificationBell: React.FC = () => {
       }
       return "/land-titles";
     }
-    // ARB
-    if (role === "arb") {
+    // ARB / arbo_head
+    if (role === "arb" || role === "arbo_head") {
+      if (n.type === "training_assigned" || n.type === "training_reminder") {
+        return "/my-trainings";
+      }
       return "/my-application";
     }
     return "/dashboard";

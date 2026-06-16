@@ -64,9 +64,22 @@ export const MyTrainings: React.FC = () => {
   useEffect(() => {
     if (!user) return;
 
-    // Get trainings where user is directly assigned
+    let myCoopIds: string[] = [];
+
+    // First, find which coops this user belongs to
+    const unsubCoop = onSnapshot(
+      query(
+        collection(db, "cooperativeMembers"),
+        where("userId", "==", user.uid),
+      ),
+      (snap) => {
+        myCoopIds = snap.docs.map((d) => d.data().cooperativeId);
+      },
+    );
+
+    // Get trainings where user is directly assigned OR via coop
     const unsubTrainings = onSnapshot(
-      query(collection(db, "trainings"), orderBy("date", "desc")),
+      query(collection(db, "trainings"), orderBy("date", "asc")),
       (snap) => {
         const list: Training[] = [];
         snap.forEach((d) => {
@@ -84,9 +97,14 @@ export const MyTrainings: React.FC = () => {
             createdAt: data.createdAt || "",
           });
         });
-        // Filter: only trainings where this user is directly assigned
-        // (Coop-based assignment would need cooperativeMembers lookup)
-        setTrainings(list.filter((t) => t.assignedUserIds.includes(user.uid)));
+        // Show trainings where user is directly assigned OR is member of assigned coop
+        setTrainings(
+          list.filter(
+            (t) =>
+              t.assignedUserIds.includes(user.uid) ||
+              t.assignedCoopIds.some((cid) => myCoopIds.includes(cid)),
+          ),
+        );
       },
     );
 
@@ -109,6 +127,7 @@ export const MyTrainings: React.FC = () => {
     return () => {
       unsubTrainings();
       unsubAcks();
+      unsubCoop();
     };
   }, [user]);
 
@@ -133,7 +152,7 @@ export const MyTrainings: React.FC = () => {
       const training = trainings.find((t) => t.id === showAckModal);
       await addDoc(collection(db, "notifications"), {
         recipientRole: "admin",
-        recipientId: null,
+        recipientId: "admin",
         type: "training_acknowledged",
         title: `Training ${ackResponse === "acknowledged" ? "Accepted" : "Declined"}`,
         message: `${profile?.name || "ARB"} has ${ackResponse === "acknowledged" ? "acknowledged" : "declined"} "${training?.name || "training"}".${ackResponse === "declined" ? ` Reason: ${ackReason.trim()}` : ""}`,
@@ -226,6 +245,11 @@ export const MyTrainings: React.FC = () => {
                               <div className="flex items-center gap-3 mt-2">
                                 <span className="text-[10px] text-slate-500 flex items-center gap-1">
                                   <Calendar size={10} /> {formatDate(t.date)}
+                                </span>
+                                <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                                  {t.assignedTo === "cooperative"
+                                    ? "ARBO"
+                                    : "Individual"}
                                 </span>
                                 {urgent && (
                                   <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex items-center gap-1">

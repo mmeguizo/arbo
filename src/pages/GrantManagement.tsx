@@ -232,7 +232,7 @@ export const GrantManagement: React.FC = () => {
     });
 
     const unsubARBs = onSnapshot(
-      query(collection(db, "users"), where("role", "==", "arb")),
+      query(collection(db, "users"), where("role", "in", ["arb", "arbo_head"])),
       (snap) => {
         const list: ARBUser[] = [];
         snap.forEach((d) => {

@@ -97,13 +97,14 @@ export const TrainingManagement: React.FC = () => {
   >("individuals");
   const [formSelectedCoops, setFormSelectedCoops] = useState<string[]>([]);
   const [formSelectedUsers, setFormSelectedUsers] = useState<string[]>([]);
+  const [formUserSearch, setFormUserSearch] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Load data
   useEffect(() => {
     const unsubTrainings = onSnapshot(
-      query(collection(db, "trainings"), orderBy("createdAt", "desc")),
+      query(collection(db, "trainings"), orderBy("date", "asc")),
       (snap) => {
         const list: Training[] = [];
         snap.forEach((d) => {
@@ -140,7 +141,7 @@ export const TrainingManagement: React.FC = () => {
     );
 
     const unsubARBs = onSnapshot(
-      query(collection(db, "users"), where("role", "==", "arb")),
+      query(collection(db, "users"), where("role", "in", ["arb", "arbo_head"])),
       (snap) => {
         const list: ARBUser[] = [];
         snap.forEach((d) => {
@@ -296,6 +297,7 @@ export const TrainingManagement: React.FC = () => {
     setFormAssignedTo("individuals");
     setFormSelectedCoops([]);
     setFormSelectedUsers([]);
+    setFormUserSearch("");
     setFormError(null);
   };
 
@@ -357,15 +359,25 @@ export const TrainingManagement: React.FC = () => {
     }
   };
 
-  const filteredARBs = useMemo(() => {
-    if (!searchQuery.trim()) return arbUsers;
-    const term = searchQuery.trim().toLowerCase();
+  const modalFilteredARBs = useMemo(() => {
+    if (!formUserSearch.trim()) return arbUsers;
+    const term = formUserSearch.trim().toLowerCase();
     return arbUsers.filter(
       (a) =>
         a.name.toLowerCase().includes(term) ||
         a.municipality.toLowerCase().includes(term),
     );
-  }, [arbUsers, searchQuery]);
+  }, [arbUsers, formUserSearch]);
+
+  const selectAllVisible = () => {
+    const visibleIds = modalFilteredARBs.map((a) => a.uid);
+    setFormSelectedUsers((prev) => [...new Set([...prev, ...visibleIds])]);
+  };
+
+  const deselectAllVisible = () => {
+    const visibleIds = new Set(modalFilteredARBs.map((a) => a.uid));
+    setFormSelectedUsers((prev) => prev.filter((uid) => !visibleIds.has(uid)));
+  };
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -809,11 +821,11 @@ export const TrainingManagement: React.FC = () => {
                   </button>
                 </div>
                 {formAssignedTo === "cooperative" ? (
-                  <div className="max-h-32 overflow-y-auto space-y-1">
+                  <div className="max-h-36 overflow-y-auto space-y-1 border border-slate-200 rounded-xl p-2">
                     {cooperatives.map((c) => (
                       <label
                         key={c.id}
-                        className="flex items-center gap-2 text-xs cursor-pointer py-1"
+                        className="flex items-center gap-2 text-xs cursor-pointer py-1 px-2 hover:bg-slate-50 rounded"
                       >
                         <input
                           type="checkbox"
@@ -826,21 +838,93 @@ export const TrainingManagement: React.FC = () => {
                     ))}
                   </div>
                 ) : (
-                  <div className="max-h-40 overflow-y-auto space-y-1">
-                    {filteredARBs.map((a) => (
-                      <label
-                        key={a.uid}
-                        className="flex items-center gap-2 text-xs cursor-pointer py-1"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formSelectedUsers.includes(a.uid)}
-                          onChange={() => toggleUserSelection(a.uid)}
-                          className="rounded accent-emerald-700"
+                  <div>
+                    {/* Search + selection controls */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="relative flex-1">
+                        <Search
+                          size={12}
+                          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
                         />
-                        {a.name} — {a.municipality}
-                      </label>
-                    ))}
+                        <input
+                          type="text"
+                          placeholder="Search ARBs by name or municipality..."
+                          value={formUserSearch}
+                          onChange={(e) => setFormUserSearch(e.target.value)}
+                          className="block w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-[10px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <button
+                        onClick={selectAllVisible}
+                        className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 px-2 py-1 rounded border border-indigo-200 cursor-pointer whitespace-nowrap"
+                      >
+                        Select All
+                      </button>
+                      <button
+                        onClick={deselectAllVisible}
+                        className="text-[9px] font-bold text-slate-500 hover:text-slate-700 px-2 py-1 rounded border border-slate-200 cursor-pointer whitespace-nowrap"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {/* Selected count */}
+                    {formSelectedUsers.length > 0 && (
+                      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                          {formSelectedUsers.length} selected
+                        </span>
+                        {formSelectedUsers.slice(0, 5).map((uid) => {
+                          const u = arbUsers.find((a) => a.uid === uid);
+                          return u ? (
+                            <span
+                              key={uid}
+                              className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full"
+                            >
+                              {u.name}
+                            </span>
+                          ) : null;
+                        })}
+                        {formSelectedUsers.length > 5 && (
+                          <span className="text-[9px] text-slate-400">
+                            +{formSelectedUsers.length - 5} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {/* ARB checkbox list */}
+                    <div className="max-h-44 overflow-y-auto space-y-0.5 border border-slate-200 rounded-xl p-2">
+                      {modalFilteredARBs.length === 0 ? (
+                        <p className="text-[10px] text-slate-400 italic py-2 text-center">
+                          {formUserSearch
+                            ? "No matching ARBs found."
+                            : "No ARBs available."}
+                        </p>
+                      ) : (
+                        modalFilteredARBs.slice(0, 100).map((a) => (
+                          <label
+                            key={a.uid}
+                            className="flex items-center gap-2 text-xs cursor-pointer py-1 px-2 hover:bg-slate-50 rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formSelectedUsers.includes(a.uid)}
+                              onChange={() => toggleUserSelection(a.uid)}
+                              className="rounded accent-emerald-700"
+                            />
+                            {a.name}
+                            <span className="text-slate-400 text-[10px]">
+                              — {a.municipality}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                      {modalFilteredARBs.length > 100 && (
+                        <p className="text-[9px] text-slate-400 text-center py-1">
+                          Showing 100 of {modalFilteredARBs.length}. Refine your
+                          search.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
