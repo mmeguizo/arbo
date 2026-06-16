@@ -6,6 +6,7 @@ import {
   query,
   where,
   addDoc,
+  getDocs,
   doc,
   setDoc,
   updateDoc,
@@ -221,7 +222,7 @@ export const TrainingManagement: React.FC = () => {
         createdBy: profile?.name || "Admin",
       });
 
-      // Write pending acknowledgments for assigned users
+      // Write pending acknowledgments for directly assigned users
       for (const uid of formSelectedUsers) {
         const user = arbUsers.find((a) => a.uid === uid);
         const ackId = `${docRef.id}_${uid}`;
@@ -231,6 +232,28 @@ export const TrainingManagement: React.FC = () => {
           userName: user?.name || "Unknown",
           status: "pending",
         });
+      }
+
+      // If assigned to coops, also create acks for all coop members
+      if (formAssignedTo === "cooperative" && formSelectedCoops.length > 0) {
+        for (const coopId of formSelectedCoops) {
+          const coopMembersSnap = await getDocs(
+            query(
+              collection(db, "cooperativeMembers"),
+              where("cooperativeId", "==", coopId),
+            ),
+          );
+          coopMembersSnap.forEach(async (memberDoc) => {
+            const memberData = memberDoc.data();
+            const ackId = `${docRef.id}_${memberData.userId}`;
+            await setDoc(doc(db, "trainingAcknowledgments", ackId), {
+              trainingId: docRef.id,
+              userId: memberData.userId,
+              userName: memberData.userName || "Unknown",
+              status: "pending",
+            });
+          });
+        }
       }
 
       resetForm();

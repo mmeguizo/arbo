@@ -311,10 +311,14 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
       const list: any[] = [];
       snap.forEach((d) => {
         const data = d.data();
-        // Show trainings assigned to this ARBO's members
         const memberIds = new Set(members.map((m) => m.userId));
-        const assignedIds = data.assignedUserIds || [];
-        if (assignedIds.some((id: string) => memberIds.has(id))) {
+        const assignedIds: string[] = data.assignedUserIds || [];
+        const assignedCoops: string[] = data.assignedCoopIds || [];
+        // Show if any member is directly assigned OR this ARBO is assigned
+        if (
+          assignedIds.some((id: string) => memberIds.has(id)) ||
+          assignedCoops.includes(arboId)
+        ) {
           list.push({ id: d.id, ...data });
         }
       });
