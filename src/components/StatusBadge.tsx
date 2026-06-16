@@ -2,7 +2,6 @@ import React from "react";
 
 export type ApplicationStatus =
   | "under_review"
-  | "forwarded_to_surveyor"
   | "verified"
   | "awarded"
   | "disputed";
@@ -19,30 +18,22 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   const getStyles = () => {
     // Check for correction-returned overlay
     if (
-      correctionStatus === "correction_surveyor" ||
+      correctionStatus === "correction_encoder" ||
       correctionStatus === "correction_staff"
     ) {
-      const isSurveyor = correctionStatus === "correction_surveyor";
+      const isEncoder = correctionStatus === "correction_encoder";
       return {
         bg: "bg-red-50",
         text: "text-red-700",
         border: "border-red-200",
         dot: "bg-red-500",
-        label: isSurveyor
-          ? "Returned to Surveyor (Correction)"
+        label: isEncoder
+          ? "Returned to Encoder (Correction)"
           : "Returned to Staff (Correction)",
       };
     }
 
     switch (status) {
-      case "forwarded_to_surveyor":
-        return {
-          bg: "bg-amber-50",
-          text: "text-amber-700",
-          border: "border-amber-200",
-          dot: "bg-amber-500",
-          label: "For Surveyor Processing",
-        };
       case "verified":
         return {
           bg: "bg-emerald-50",
@@ -65,7 +56,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
           text: "text-orange-700",
           border: "border-orange-200",
           dot: "bg-orange-500",
-          label: "Under Review (Staff Stage)",
+          label: "For Verification (Staff Stage)",
         };
       case "disputed":
         return {

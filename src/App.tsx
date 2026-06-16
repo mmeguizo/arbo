@@ -23,6 +23,9 @@ import { Reports } from "./pages/Reports";
 import { MyGrants } from "./pages/MyGrants";
 import { GrantManagement } from "./pages/GrantManagement";
 import { CooperativeManagement } from "./pages/CooperativeManagement";
+import { ArboDashboard } from "./pages/ArboDashboard";
+import { TrainingManagement } from "./pages/TrainingManagement";
+import { MyTrainings } from "./pages/MyTrainings";
 
 // A small gatekeeper component that routes authenticated users to their natural landing page
 const AuthRedirect: React.FC = () => {
@@ -45,7 +48,11 @@ const AuthRedirect: React.FC = () => {
     return <Navigate to="/my-application" replace />;
   }
 
-  // Official roles go to Admin/Staff/Surveyor Dashboard
+  if (profile?.role === "arbo_head") {
+    return <Navigate to="/arbo-dashboard" replace />;
+  }
+
+  // Official roles go to Admin/Staff/Encoder Dashboard
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -64,7 +71,13 @@ function App() {
               path="/dashboard"
               element={
                 <ProtectedRoute
-                  allowedRoles={["admin", "staff", "surveyor", "arb"]}
+                  allowedRoles={[
+                    "admin",
+                    "staff",
+                    "encoder",
+                    "arb",
+                    "arbo_head",
+                  ]}
                 >
                   <Dashboard />
                 </ProtectedRoute>
@@ -74,7 +87,7 @@ function App() {
             <Route
               path="/my-application"
               element={
-                <ProtectedRoute allowedRoles={["arb"]}>
+                <ProtectedRoute allowedRoles={["arb", "arbo_head"]}>
                   <MyApplication />
                 </ProtectedRoute>
               }
@@ -83,8 +96,17 @@ function App() {
             <Route
               path="/my-grants"
               element={
-                <ProtectedRoute allowedRoles={["arb"]}>
+                <ProtectedRoute allowedRoles={["arb", "arbo_head"]}>
                   <MyGrants />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/my-trainings"
+              element={
+                <ProtectedRoute allowedRoles={["arb", "arbo_head"]}>
+                  <MyTrainings />
                 </ProtectedRoute>
               }
             />
@@ -101,7 +123,7 @@ function App() {
             <Route
               path="/land-titles"
               element={
-                <ProtectedRoute allowedRoles={["surveyor", "admin"]}>
+                <ProtectedRoute allowedRoles={["encoder", "admin"]}>
                   <LandTitles />
                 </ProtectedRoute>
               }
@@ -110,7 +132,7 @@ function App() {
             <Route
               path="/search"
               element={
-                <ProtectedRoute allowedRoles={["admin", "staff", "surveyor"]}>
+                <ProtectedRoute allowedRoles={["admin", "staff", "encoder"]}>
                   <Search />
                 </ProtectedRoute>
               }
@@ -146,8 +168,26 @@ function App() {
             <Route
               path="/cooperatives"
               element={
-                <ProtectedRoute allowedRoles={["admin"]}>
+                <ProtectedRoute allowedRoles={["admin", "staff"]}>
                   <CooperativeManagement />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/arbo-dashboard"
+              element={
+                <ProtectedRoute allowedRoles={["arbo_head"]}>
+                  <ArboDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/trainings"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <TrainingManagement />
                 </ProtectedRoute>
               }
             />
@@ -155,7 +195,7 @@ function App() {
             <Route
               path="/audit-logs"
               element={
-                <ProtectedRoute allowedRoles={["admin", "staff", "surveyor"]}>
+                <ProtectedRoute allowedRoles={["admin", "staff", "encoder"]}>
                   <AuditLogs />
                 </ProtectedRoute>
               }

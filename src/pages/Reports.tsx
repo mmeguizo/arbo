@@ -28,7 +28,7 @@ interface LandTitleRecord {
   beneficiaryName: string;
   encodedAt: string;
   awardedAt?: string;
-  surveyorId: string;
+  encoderId: string;
 }
 
 interface AppRecord {
@@ -159,23 +159,15 @@ export const Reports: React.FC = () => {
 
   // Status distribution
   const statusDistribution = useMemo(() => {
-    const statuses = [
-      "under_review",
-      "forwarded_to_surveyor",
-      "verified",
-      "awarded",
-      "disputed",
-    ];
+    const statuses = ["under_review", "verified", "awarded", "disputed"];
     const labels: Record<string, string> = {
       under_review: "Under Review",
-      forwarded_to_surveyor: "Surveyor Stage",
       verified: "Verified",
       awarded: "Awarded",
       disputed: "Disputed",
     };
     const colors: Record<string, string> = {
       under_review: "#f97316",
-      forwarded_to_surveyor: "#f59e0b",
       verified: "#10b981",
       awarded: "#2563eb",
       disputed: "#e11d48",
@@ -246,7 +238,7 @@ export const Reports: React.FC = () => {
         "beneficiaryName",
         "awardedAt",
         "encodedAt",
-        "surveyorId",
+        "encoderId",
       ],
       filteredTitles as unknown as Record<string, unknown>[],
       {
@@ -258,7 +250,7 @@ export const Reports: React.FC = () => {
         beneficiaryName: "Beneficiary",
         awardedAt: "Awarded Date",
         encodedAt: "Encoded Date",
-        surveyorId: "Surveyor",
+        encoderId: "Encoder",
       },
     );
   };
@@ -284,7 +276,7 @@ export const Reports: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between shrink-0 z-10">
           <div className="text-left">
@@ -612,7 +604,7 @@ export const Reports: React.FC = () => {
                       <th className="px-6 py-4 text-left">Area (ha)</th>
                       <th className="px-6 py-4 text-left">Municipality</th>
                       <th className="px-6 py-4 text-left">Awarded Date</th>
-                      <th className="px-6 py-4 text-left">Surveyor</th>
+                      <th className="px-6 py-4 text-left">Encoder</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -650,7 +642,7 @@ export const Reports: React.FC = () => {
                             {formatDate(t.awardedAt || t.encodedAt)}
                           </td>
                           <td className="px-6 py-4 text-xs text-slate-500">
-                            {t.surveyorId}
+                            {t.encoderId}
                           </td>
                         </tr>
                       ))

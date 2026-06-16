@@ -30,7 +30,11 @@ export interface Notification {
     | "awarded"
     | "disputed"
     | "correction_needed"
-    | "correction_resolved";
+    | "correction_resolved"
+    | "blocked"
+    | "training_assigned"
+    | "training_reminder"
+    | "training_acknowledged";
   title: string;
   message: string;
   applicationId: string | null;
@@ -63,14 +67,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   const { profile } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // Real-time listener for this user's notifications — always scoped to their uid
+  // Real-time listener — scoped to this user's uid AND role-based broadcasts
   useEffect(() => {
     if (!profile) {
       setNotifications([]);
       return;
     }
 
-    // Strictly scope to this user's recipientId
+    // Query 1: Direct notifications (recipientId === user uid)
     const q = query(
       collection(db, "notifications"),
       where("recipientId", "==", profile.uid),
@@ -84,14 +88,57 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
         snap.forEach((d) => {
           list.push({ id: d.id, ...d.data() } as Notification);
         });
-        setNotifications(list);
+        setNotifications((prev) => {
+          // Merge with any role-based notifications, deduplicate by ID
+          const ids = new Set(list.map((n) => n.id));
+          const merged = [...list];
+          prev.forEach((n) => {
+            if (!ids.has(n.id)) merged.push(n);
+          });
+          return merged.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        });
       },
       (err) => {
         console.error("Notification snapshot error:", err);
       },
     );
 
-    return () => unsub();
+    // Query 2 (admin only): Role-based broadcasts (recipientRole === "admin" + recipientId is not a uid)
+    let unsubRole: (() => void) | undefined;
+    if (profile.role === "admin") {
+      const qRole = query(
+        collection(db, "notifications"),
+        where("recipientRole", "==", "admin"),
+        orderBy("createdAt", "desc"),
+      );
+      unsubRole = onSnapshot(qRole, (snap) => {
+        const roleList: Notification[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          // Only include if recipientId is NOT a specific user (broadcast) or matches
+          if (
+            !data.recipientId ||
+            data.recipientId === profile.uid ||
+            data.recipientId === "admin"
+          ) {
+            roleList.push({ id: d.id, ...data } as Notification);
+          }
+        });
+        setNotifications((prev) => {
+          const ids = new Set(prev.map((n) => n.id));
+          const merged = [...prev];
+          roleList.forEach((n) => {
+            if (!ids.has(n.id)) merged.push(n);
+          });
+          return merged.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        });
+      });
+    }
+
+    return () => {
+      unsub();
+      if (unsubRole) unsubRole();
+    };
   }, [profile]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;

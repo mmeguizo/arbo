@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, type User, signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
 
 // Type definitions for user profile roles
-export type UserRole = "arb" | "staff" | "surveyor" | "admin";
+export type UserRole = "arb" | "staff" | "encoder" | "admin" | "arbo_head";
 
 export interface UserProfile {
   uid: string;
@@ -19,6 +19,7 @@ export interface UserProfile {
   role: UserRole;
   createdAt: string;
   isActive?: boolean;
+  arboId?: string;
 }
 
 interface AuthContextType {
@@ -41,19 +42,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const fetchProfile = async (currentUser: User) => {
     try {
       const docRef = doc(db, "users", currentUser.uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setProfile({ uid: currentUser.uid, ...docSnap.data() } as UserProfile);
-      } else {
-        // No Firestore profile — this is an orphaned auth account, sign out forcefully
-        console.warn("User profile not found in Firestore — signing out.");
-        await signOut(auth);
-        setProfile(null);
-        setUser(null);
-      }
+      // Use onSnapshot for real-time profile updates (role changes reflect immediately)
+      const unsub = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setProfile({
+            uid: currentUser.uid,
+            ...docSnap.data(),
+          } as UserProfile);
+        } else {
+          console.warn("User profile not found in Firestore — signing out.");
+          signOut(auth);
+          setProfile(null);
+          setUser(null);
+        }
+        setLoading(false);
+      });
+      return unsub;
     } catch (error) {
       console.error("Error fetching user profile:", error);
       setProfile(null);
+      setLoading(false);
     }
   };
 
@@ -64,17 +72,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   useEffect(() => {
+    let unsubFirestore: (() => void) | undefined;
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        await fetchProfile(currentUser);
+        // Clean up previous listener before setting a new one
+        if (unsubFirestore) unsubFirestore();
+        const result = await fetchProfile(currentUser);
+        if (typeof result === "function") {
+          unsubFirestore = result;
+        }
       } else {
+        if (unsubFirestore) unsubFirestore();
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (unsubFirestore) unsubFirestore();
+    };
   }, []);
 
   const logout = async () => {

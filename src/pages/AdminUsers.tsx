@@ -1,8 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
-import { collection, getDocs, doc, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import { db, firebaseConfig } from "../firebase/config";
 import {
   UserPlus,
@@ -18,6 +28,11 @@ import {
   Power,
   KeyRound,
   Globe,
+  Building2,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
 } from "lucide-react";
 
 import localityData from "../data/locality.json";
@@ -26,7 +41,7 @@ interface UserProfile {
   uid: string;
   name: string;
   email: string;
-  role: "arb" | "staff" | "surveyor" | "admin";
+  role: "arb" | "arbo_head" | "staff" | "encoder" | "admin";
   barangay: string;
   municipality: string;
   province: string;
@@ -44,7 +59,9 @@ export const AdminUsers: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"staff" | "surveyor" | "admin">("staff");
+  const [role, setRole] = useState<"staff" | "encoder" | "admin" | "arbo_head">(
+    "staff",
+  );
   const [province, setProvince] = useState("Negros Occidental");
   const [barangay, setBarangay] = useState("Isabela");
   const [municipality, setMunicipality] = useState("");
@@ -54,26 +71,32 @@ export const AdminUsers: React.FC = () => {
     msg: string;
   } | null>(null);
 
+  // Table: search, sort, pagination
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortField, setSortField] = useState<
+    "name" | "role" | "province" | "createdAt"
+  >("createdAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+  const pageSize = 15;
+
   const fetchUsers = async () => {
     try {
-      // Query to get Admin, Staff, & Surveyor accounts
       const snap = await getDocs(collection(db, "users"));
       const list: UserProfile[] = [];
       snap.forEach((d) => {
         const u = d.data();
-        if (u.role && u.role !== "arb") {
-          list.push({
-            uid: d.id,
-            name: u.name || "Unnamed",
-            email: u.email || "",
-            role: u.role as "staff" | "surveyor" | "admin",
-            barangay: u.barangay || "",
-            municipality: u.municipality || "",
-            province: u.province || "Negros Occidental",
-            createdAt: u.createdAt || "",
-            isActive: u.isActive !== false, // default true
-          });
-        }
+        list.push({
+          uid: d.id,
+          name: u.name || "Unnamed",
+          email: u.email || "",
+          role: (u.role as UserProfile["role"]) || "arb",
+          barangay: u.barangay || "",
+          municipality: u.municipality || "",
+          province: u.province || "Negros Occidental",
+          createdAt: u.createdAt || "",
+          isActive: u.isActive !== false,
+        });
       });
       setUsers(list);
     } catch (err) {
@@ -183,6 +206,23 @@ export const AdminUsers: React.FC = () => {
     }
   };
 
+  const handleChangeRole = async (
+    userProfile: UserProfile,
+    newRole: UserProfile["role"],
+  ) => {
+    try {
+      await updateDoc(doc(db, "users", userProfile.uid), { role: newRole });
+      setFeedback({
+        type: "success",
+        msg: `${userProfile.name}'s role updated to ${newRole}.`,
+      });
+      await fetchUsers();
+    } catch (err) {
+      console.error(err);
+      setFeedback({ type: "error", msg: "Failed to update role." });
+    }
+  };
+
   const handleToggleStatus = async (userProfile: UserProfile) => {
     try {
       const newStatus = !userProfile.isActive;
@@ -210,15 +250,64 @@ export const AdminUsers: React.FC = () => {
       });
     } catch (err) {
       console.error("Failed to send reset email", err);
-      setFeedback({ type: "error", msg: "Failed to send password reset email." });
+      setFeedback({
+        type: "error",
+        msg: "Failed to send password reset email.",
+      });
     }
+  };
+
+  // Filtered, sorted, paginated users
+  const filteredUsers = React.useMemo(() => {
+    let list = users;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (u) =>
+          u.name.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q) ||
+          u.role.toLowerCase().includes(q) ||
+          (u.municipality || "").toLowerCase().includes(q),
+      );
+    }
+    list = [...list].sort((a, b) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      const aVal = (a[sortField] || "").toString().toLowerCase();
+      const bVal = (b[sortField] || "").toString().toLowerCase();
+      return aVal < bVal ? -1 * dir : aVal > bVal ? dir : 0;
+    });
+    return list;
+  }, [users, searchQuery, sortField, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const pagedUsers = filteredUsers.slice(
+    (page - 1) * pageSize,
+    page * pageSize,
+  );
+
+  const handleSort = (field: typeof sortField) => {
+    if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon: React.FC<{ field: typeof sortField }> = ({ field }) => {
+    if (sortField !== field)
+      return <ArrowUpDown size={10} className="text-slate-300 ml-0.5" />;
+    return sortDir === "asc" ? (
+      <ChevronUp size={10} className="text-emerald-700 ml-0.5" />
+    ) : (
+      <ChevronDown size={10} className="text-emerald-700 ml-0.5" />
+    );
   };
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between shrink-0 z-10">
           <div className="text-left">
@@ -240,8 +329,8 @@ export const AdminUsers: React.FC = () => {
               <span>Register Official / Examiner</span>
             </h3>
             <p className="text-[10px] text-slate-400 mb-5 leading-normal">
-              Directly seed authentic DAR Staff, Surveyor, or sub-admin
-              profiles. These bypass the farmer registration flow and acquire
+              Directly seed authentic DAR Staff, Encoder, or sub-admin profiles.
+              These bypass the farmer registration flow and acquire
               instantaneous role-restricted privileges.
             </p>
 
@@ -325,15 +414,24 @@ export const AdminUsers: React.FC = () => {
                 <select
                   value={role}
                   onChange={(e) =>
-                    setRole(e.target.value as "staff" | "surveyor" | "admin")
+                    setRole(
+                      e.target.value as
+                        | "staff"
+                        | "encoder"
+                        | "admin"
+                        | "arbo_head",
+                    )
                   }
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
                 >
                   <option value="staff">
                     DAR Staff (Municipal Document Screener)
                   </option>
-                  <option value="surveyor">
-                    DAR Surveyor (GPS/Title Coordinator)
+                  <option value="encoder">
+                    DAR Encoder (Land Survey Data Specialist)
+                  </option>
+                  <option value="arbo_head">
+                    ARBO Head (Cooperative Leader)
                   </option>
                   <option value="admin">
                     District Administrator (Final Approver)
@@ -357,7 +455,9 @@ export const AdminUsers: React.FC = () => {
                     className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
                   >
                     {localityData.provinces.map((p) => (
-                      <option key={p.name} value={p.name}>{p.name}</option>
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -423,6 +523,25 @@ export const AdminUsers: React.FC = () => {
             </p>
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              {/* Search bar */}
+              <div className="px-4 py-3 border-b border-slate-100">
+                <div className="relative max-w-xs">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search by name, email, role..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    className="block w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
               {loading ? (
                 <div className="py-12 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
                   <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-850 border-t-transparent"></div>
@@ -435,20 +554,44 @@ export const AdminUsers: React.FC = () => {
                   <table className="min-w-full divide-y divide-slate-100 text-xs">
                     <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-widest text-[9px]">
                       <tr>
-                        <th scope="col" className="px-5 py-3">
-                          Official User
+                        <th
+                          scope="col"
+                          className="px-5 py-3 cursor-pointer select-none"
+                          onClick={() => handleSort("name")}
+                        >
+                          <span className="inline-flex items-center">
+                            Name <SortIcon field="name" />
+                          </span>
                         </th>
-                        <th scope="col" className="px-5 py-3">
-                          Province
+                        <th
+                          scope="col"
+                          className="px-5 py-3 cursor-pointer select-none"
+                          onClick={() => handleSort("province")}
+                        >
+                          <span className="inline-flex items-center">
+                            Province <SortIcon field="province" />
+                          </span>
                         </th>
                         <th scope="col" className="px-5 py-3">
                           Municipality
                         </th>
-                        <th scope="col" className="px-5 py-3">
-                          Role Status
+                        <th
+                          scope="col"
+                          className="px-5 py-3 cursor-pointer select-none"
+                          onClick={() => handleSort("role")}
+                        >
+                          <span className="inline-flex items-center">
+                            Role <SortIcon field="role" />
+                          </span>
                         </th>
-                        <th scope="col" className="px-5 py-3">
-                          Created
+                        <th
+                          scope="col"
+                          className="px-5 py-3 cursor-pointer select-none"
+                          onClick={() => handleSort("createdAt")}
+                        >
+                          <span className="inline-flex items-center">
+                            Created <SortIcon field="createdAt" />
+                          </span>
                         </th>
                         <th scope="col" className="px-5 py-3 text-right">
                           Actions
@@ -456,7 +599,7 @@ export const AdminUsers: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {users.map((u) => (
+                      {pagedUsers.map((u) => (
                         <tr key={u.uid} className="hover:bg-slate-50/50">
                           <td className="px-5 py-3 whitespace-nowrap">
                             <div className="flex items-center space-x-2.5">
@@ -484,14 +627,22 @@ export const AdminUsers: React.FC = () => {
                               className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wide border ${
                                 u.role === "admin"
                                   ? "bg-amber-50 border-amber-200 text-amber-700"
-                                  : u.role === "surveyor"
+                                  : u.role === "encoder"
                                     ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                                    : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                    : u.role === "arbo_head"
+                                      ? "bg-teal-50 border-teal-200 text-teal-700"
+                                      : u.role === "arb"
+                                        ? "bg-slate-100 border-slate-200 text-slate-600"
+                                        : "bg-emerald-50 border-emerald-200 text-emerald-700"
                               }`}
                             >
                               {u.role === "admin" && <Shield size={10} />}
-                              {u.role === "surveyor" && <Hash size={10} />}
+                              {u.role === "encoder" && <Hash size={10} />}
                               {u.role === "staff" && <Briefcase size={10} />}
+                              {u.role === "arbo_head" && (
+                                <Building2 size={10} />
+                              )}
+                              {u.role === "arb" && <Users size={10} />}
                               <span>{u.role}</span>
                             </span>
                           </td>
@@ -501,6 +652,22 @@ export const AdminUsers: React.FC = () => {
                               : "--"}
                           </td>
                           <td className="px-5 py-3 whitespace-nowrap text-right space-x-2">
+                            <select
+                              value={u.role}
+                              onChange={(e) =>
+                                handleChangeRole(
+                                  u,
+                                  e.target.value as UserProfile["role"],
+                                )
+                              }
+                              className="text-[10px] font-bold rounded-lg border border-slate-200 bg-slate-50 py-1 px-2 cursor-pointer focus:border-emerald-500 focus:outline-none"
+                            >
+                              <option value="arb">ARB</option>
+                              <option value="arbo_head">ARBO Head</option>
+                              <option value="staff">Staff</option>
+                              <option value="encoder">Encoder</option>
+                              <option value="admin">Admin</option>
+                            </select>
                             <button
                               onClick={() => handleResetPassword(u.email)}
                               title="Send Password Reset Email"
@@ -510,31 +677,83 @@ export const AdminUsers: React.FC = () => {
                             </button>
                             <button
                               onClick={() => handleToggleStatus(u)}
-                              title={u.isActive ? "Disable User" : "Enable User"}
+                              title={
+                                u.isActive ? "Disable User" : "Enable User"
+                              }
                               className={`inline-flex items-center justify-center h-7 w-7 rounded-lg transition-colors ${
                                 u.isActive
                                   ? "bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-700"
                                   : "bg-emerald-50 text-emerald-500 hover:bg-emerald-100 hover:text-emerald-700"
                               }`}
                             >
-                              {u.isActive ? <PowerOff size={12} /> : <Power size={12} />}
+                              {u.isActive ? (
+                                <PowerOff size={12} />
+                              ) : (
+                                <Power size={12} />
+                              )}
                             </button>
                           </td>
                         </tr>
                       ))}
 
-                        {users.length === 0 && (
+                      {filteredUsers.length === 0 && !loading && (
                         <tr>
                           <td
                             colSpan={6}
-                            className="px-5 py-8 text-center text-slate-405 italic"
+                            className="px-5 py-8 text-center text-slate-400 italic"
                           >
-                            No secondary official accounts registered yet.
+                            {searchQuery
+                              ? "No users match your search."
+                              : "No accounts registered yet."}
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="px-4 py-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span className="text-slate-400">
+                    {filteredUsers.length} users · Page {page} of {totalPages}
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="px-2 py-1 rounded border border-slate-200 disabled:opacity-30 cursor-pointer hover:bg-slate-50 text-[10px] font-bold"
+                    >
+                      Prev
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .slice(
+                        Math.max(0, page - 3),
+                        Math.min(totalPages, page + 2),
+                      )
+                      .map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setPage(p)}
+                          className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
+                            p === page
+                              ? "bg-emerald-800 text-white"
+                              : "border border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    <button
+                      onClick={() =>
+                        setPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      disabled={page === totalPages}
+                      className="px-2 py-1 rounded border border-slate-200 disabled:opacity-30 cursor-pointer hover:bg-slate-50 text-[10px] font-bold"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

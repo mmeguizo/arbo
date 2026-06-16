@@ -35,7 +35,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-type DocField = "cedula" | "birthCert" | "brgyCert" | "picture";
+type DocField = "birthCert" | "governmentId" | "picture";
 
 interface LandTitle {
   titleNumber: string;
@@ -49,6 +49,9 @@ interface LandTitle {
   awardedAt?: string;
   beneficiaryName?: string;
   landPhotos?: string[];
+  titleType?: string;
+  cloaType?: string | null;
+  aspPsdNumber?: string;
 }
 
 interface ApplicationData {
@@ -58,9 +61,8 @@ interface ApplicationData {
   staffNotes: string;
   adminNotes: string;
   documents: {
-    cedula: string | null;
     birthCert: string | null;
-    brgyCert: string | null;
+    governmentId: string | null;
     picture: string | null;
   };
   notes: string;
@@ -375,9 +377,8 @@ export const MyApplication: React.FC = () => {
                     adminNotes: "",
                     notes: "",
                     documents: {
-                      cedula: null,
                       birthCert: null,
-                      brgyCert: null,
+                      governmentId: null,
                       picture: null,
                     },
                   });
@@ -489,10 +490,8 @@ export const MyApplication: React.FC = () => {
                       <p className="text-xs text-slate-500 leading-relaxed pt-2">
                         {app.status === "under_review" &&
                           "Your application is under review by DAR municipal staff. They are verifying your credentials and documents."}
-                        {app.status === "forwarded_to_surveyor" &&
-                          "Staff has verified your documents! Forwarded to the surveyor team for land title encoding."}
                         {app.status === "verified" &&
-                          "Surveyor has encoded your land details. Awaiting Admin/Regional Director approval."}
+                          "Staff has verified your documents! Awaiting Admin/Regional Director approval."}
                         {app.status === "awarded" &&
                           "Congratulations! Your CLOA title has been officially awarded. See your land details below."}
                         {app.status === "disputed" &&
@@ -594,7 +593,7 @@ export const MyApplication: React.FC = () => {
                     <p className="text-xs text-slate-500 mt-1">
                       {titles.length > 1
                         ? `You have ${titles.length} awarded land titles.`
-                        : "Your official title details encoded and verified by the DAR Municipal Surveyor."}
+                        : "Your official title details encoded and verified by the DAR Municipal Encoder."}
                     </p>
                   </div>
                   {titles.length > 1 && (
@@ -737,12 +736,12 @@ export const MyApplication: React.FC = () => {
                 />
                 <div className="space-y-1">
                   <h3 className="font-bold text-amber-900 text-sm">
-                    Waiting for Surveyor Encoding
+                    Waiting for Encoder Encoding
                   </h3>
                   <p className="text-xs text-amber-750 leading-relaxed">
                     Great news! Your agrarian documents have been approved by
                     the Admin/Director. We are currently dispatching our
-                    municipal surveyor to encode your precise geographic lot
+                    municipal encoder to encode your precise geographic lot
                     limits and award your TCT title card in the digital system.
                   </p>
                 </div>
@@ -754,8 +753,8 @@ export const MyApplication: React.FC = () => {
                   No Land Titles Yet
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Once your application is approved and the surveyor encodes
-                  your land details, your awarded land titles will appear here.
+                  Once your application is approved and the encoder encodes your
+                  land details, your awarded land titles will appear here.
                 </p>
               </div>
             ) : null}
@@ -791,31 +790,24 @@ export const MyApplication: React.FC = () => {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 mt-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 mt-5">
                   {(
                     [
                       {
-                        type: "cedula" as DocField,
-                        label: "CTC (Cedula)",
-                        sub: "Identity / Tax reference",
-                        icon: (
-                          <CreditCard size={18} className="text-slate-500" />
-                        ),
-                        src: app.documents.cedula,
-                      },
-                      {
                         type: "birthCert" as DocField,
                         label: "Birth Certificate",
-                        sub: "Kinship & residency proof",
+                        sub: "Kinship & identity proof",
                         icon: <FileText size={18} className="text-slate-500" />,
                         src: app.documents.birthCert,
                       },
                       {
-                        type: "brgyCert" as DocField,
-                        label: "Barangay Residency Cert",
-                        sub: "10-year municipal proof",
-                        icon: <MapPin size={18} className="text-slate-500" />,
-                        src: app.documents.brgyCert,
+                        type: "governmentId" as DocField,
+                        label: "Government-Issued ID",
+                        sub: "Any valid government ID",
+                        icon: (
+                          <CreditCard size={18} className="text-slate-500" />
+                        ),
+                        src: app.documents.governmentId,
                       },
                       {
                         type: "picture" as DocField,

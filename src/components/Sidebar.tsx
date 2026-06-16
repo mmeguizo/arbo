@@ -15,6 +15,7 @@ import {
   TrendingUp,
   ClipboardList,
   Building2,
+  GraduationCap,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -43,6 +44,17 @@ export const Sidebar: React.FC = () => {
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "My CLOA Record", path: "/my-application", icon: FileText },
         { label: "My Grants", path: "/my-grants", icon: TrendingUp },
+        { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
+      ];
+    }
+
+    if (role === "arbo_head") {
+      return [
+        { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
+        { label: "ARBO Dashboard", path: "/arbo-dashboard", icon: Building2 },
+        { label: "My CLOA Record", path: "/my-application", icon: FileText },
+        { label: "My Grants", path: "/my-grants", icon: TrendingUp },
+        { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
       ];
     }
 
@@ -55,7 +67,7 @@ export const Sidebar: React.FC = () => {
       ];
     }
 
-    if (role === "surveyor") {
+    if (role === "encoder") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "Encode Title Info", path: "/land-titles", icon: MapPin },
@@ -68,11 +80,12 @@ export const Sidebar: React.FC = () => {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
         { label: "Review (Staff Stage)", path: "/review-apps", icon: FileText },
-        { label: "Surveyor Stage", path: "/land-titles", icon: MapPin },
+        { label: "Encoder Stage", path: "/land-titles", icon: MapPin },
         { label: "Search Registry", path: "/search", icon: Search },
         { label: "Analytics & Reports", path: "/reports", icon: TrendingUp },
         { label: "Grant Management", path: "/grants", icon: TrendingUp },
-        { label: "Cooperatives", path: "/cooperatives", icon: Building2 },
+        { label: "Trainings", path: "/trainings", icon: GraduationCap },
+        { label: "ARBOs", path: "/cooperatives", icon: Building2 },
         { label: "System Users", path: "/accounts", icon: Settings },
         { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
       ];
@@ -104,7 +117,7 @@ export const Sidebar: React.FC = () => {
 
       {/* Sidebar container */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-64 transform bg-emerald-900 text-white transition-transform duration-300 ease-in-out md:translate-x-0 md:sticky md:top-0 md:flex md:flex-col md:h-screen ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 shrink-0 transform bg-emerald-900 text-white transition-transform duration-300 ease-in-out flex flex-col overflow-y-auto md:relative md:translate-x-0 md:h-full md:min-h-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -176,7 +189,7 @@ export const Sidebar: React.FC = () => {
         </nav>
 
         {/* Footer info & Logout */}
-        <div className="p-4 border-t border-emerald-800/80 bg-emerald-950/40">
+        <div className="mt-auto p-4 border-t border-emerald-800/80 bg-emerald-950/40">
           <div className="flex items-center space-x-3 mb-4">
             <div className="h-9 w-9 rounded-full bg-emerald-800 flex items-center justify-center font-bold text-sm uppercase text-amber-300">
               {profile?.name ? profile.name.substring(0, 2) : "US"}

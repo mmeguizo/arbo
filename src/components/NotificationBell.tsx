@@ -43,15 +43,18 @@ export const NotificationBell: React.FC = () => {
     if (role === "staff") {
       return "/review-apps?tab=under_review";
     }
-    // Surveyor: forwarded/correction go to land-titles
-    if (role === "surveyor") {
+    // Encoder: forwarded/correction go to land-titles
+    if (role === "encoder") {
       if (n.type === "forwarded" || n.type === "correction_needed") {
         return "/land-titles";
       }
       return "/land-titles";
     }
-    // ARB
-    if (role === "arb") {
+    // ARB / arbo_head
+    if (role === "arb" || role === "arbo_head") {
+      if (n.type === "training_assigned" || n.type === "training_reminder") {
+        return "/my-trainings";
+      }
       return "/my-application";
     }
     return "/dashboard";
