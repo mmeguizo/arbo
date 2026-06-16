@@ -7,6 +7,7 @@ import {
   where,
   addDoc,
   doc,
+  setDoc,
   updateDoc,
   deleteDoc,
   onSnapshot,
@@ -206,7 +207,7 @@ export const TrainingManagement: React.FC = () => {
     setFormError(null);
     setSubmitting(true);
     try {
-      await addDoc(collection(db, "trainings"), {
+      const docRef = await addDoc(collection(db, "trainings"), {
         name: formName.trim(),
         purpose: formPurpose.trim(),
         date: new Date(formDate).toISOString(),
@@ -222,8 +223,9 @@ export const TrainingManagement: React.FC = () => {
       // Write pending acknowledgments for assigned users
       for (const uid of formSelectedUsers) {
         const user = arbUsers.find((a) => a.uid === uid);
-        await addDoc(collection(db, "trainingAcknowledgments"), {
-          trainingId: "", // will be updated... actually Firestore auto-gen ID, we need to batch
+        const ackId = `${docRef.id}_${uid}`;
+        await setDoc(doc(db, "trainingAcknowledgments", ackId), {
+          trainingId: docRef.id,
           userId: uid,
           userName: user?.name || "Unknown",
           status: "pending",
@@ -314,7 +316,9 @@ export const TrainingManagement: React.FC = () => {
 
   const toggleCoopSelection = (coopId: string) => {
     setFormSelectedCoops((prev) =>
-      prev.includes(coopId) ? prev.filter((c) => c !== coopId) : [...coopId],
+      prev.includes(coopId)
+        ? prev.filter((c) => c !== coopId)
+        : [...prev, coopId],
     );
   };
 

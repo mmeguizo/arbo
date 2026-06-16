@@ -71,7 +71,13 @@ function App() {
               path="/dashboard"
               element={
                 <ProtectedRoute
-                  allowedRoles={["admin", "staff", "encoder", "arb"]}
+                  allowedRoles={[
+                    "admin",
+                    "staff",
+                    "encoder",
+                    "arb",
+                    "arbo_head",
+                  ]}
                 >
                   <Dashboard />
                 </ProtectedRoute>
@@ -81,7 +87,7 @@ function App() {
             <Route
               path="/my-application"
               element={
-                <ProtectedRoute allowedRoles={["arb"]}>
+                <ProtectedRoute allowedRoles={["arb", "arbo_head"]}>
                   <MyApplication />
                 </ProtectedRoute>
               }
@@ -90,7 +96,7 @@ function App() {
             <Route
               path="/my-grants"
               element={
-                <ProtectedRoute allowedRoles={["arb"]}>
+                <ProtectedRoute allowedRoles={["arb", "arbo_head"]}>
                   <MyGrants />
                 </ProtectedRoute>
               }

@@ -447,7 +447,7 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
 };
 
 const GrantsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
-  arboId,
+  arboId: _arboId,
   members,
 }) => {
   const [grants, setGrants] = useState<any[]>([]);

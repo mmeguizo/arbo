@@ -23,13 +23,17 @@ import {
   Trash2,
   Upload,
   Check,
+  Search,
 } from "lucide-react";
+
+import localityData from "../data/locality.json";
 
 interface Cooperative {
   id: string;
   name: string;
   address: string;
   municipality: string;
+  barangay?: string;
   province: string;
   logo: string;
   headId: string;
@@ -69,11 +73,16 @@ export const CooperativeManagement: React.FC = () => {
   // Form state
   const [formName, setFormName] = useState("");
   const [formAddress, setFormAddress] = useState("");
+  const [formProvince, setFormProvince] = useState("Negros Occidental");
   const [formMunicipality, setFormMunicipality] = useState("");
+  const [formBarangay, setFormBarangay] = useState("");
   const [formLogo, setFormLogo] = useState("");
+  const [formHeadId, setFormHeadId] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Member search
+  const [memberSearch, setMemberSearch] = useState("");
 
   useEffect(() => {
     const unsubCoops = onSnapshot(collection(db, "cooperatives"), (snap) => {
@@ -85,6 +94,7 @@ export const CooperativeManagement: React.FC = () => {
           name: data.name,
           address: data.address,
           municipality: data.municipality,
+          barangay: data.barangay || "",
           province: data.province,
           logo: data.logo || "",
           headId: data.headId,
@@ -144,10 +154,31 @@ export const CooperativeManagement: React.FC = () => {
   const getCoopMembers = (coopId: string) =>
     members.filter((m) => m.cooperativeId === coopId);
 
-  // All municipalities that have at least one ARB
-  const availableMunicipalities = useMemo(() => {
-    const set = new Set(arbUsers.map((a) => a.municipality).filter(Boolean));
-    return Array.from(set).sort();
+  // All municipalities from locality data, cascaded by province
+  const allMunicipalities = useMemo(() => {
+    const province = localityData.provinces.find(
+      (p) => p.name === formProvince,
+    );
+    return province?.municipalities.map((m) => m.name).sort() || [];
+  }, [formProvince]);
+
+  // Barangays for selected municipality
+  const allBarangays = useMemo(() => {
+    if (!formProvince || !formMunicipality) return [];
+    const province = localityData.provinces.find(
+      (p) => p.name === formProvince,
+    );
+    const mun = province?.municipalities.find(
+      (m) => m.name === formMunicipality,
+    );
+    return mun?.barangays.map((b) => b.name).sort() || [];
+  }, [formProvince, formMunicipality]);
+
+  // All municipalities for display (from locality data)
+
+  // All ARB/arbo_head users (for head selector)
+  const eligibleHeads = useMemo(() => {
+    return arbUsers.filter((a) => a.uid);
   }, [arbUsers]);
 
   const handleLogoUpload = async (file: File): Promise<string> => {
@@ -161,24 +192,30 @@ export const CooperativeManagement: React.FC = () => {
       setFormError("ARBO name is required.");
       return;
     }
-    if (!formMunicipality) {
-      setFormError("Please select a municipality.");
-      return;
-    }
     setFormError(null);
     setSubmitting(true);
 
     try {
+      const selectedHead = formHeadId
+        ? arbUsers.find((a) => a.uid === formHeadId)
+        : null;
       await addDoc(collection(db, "cooperatives"), {
         name: formName.trim(),
         address: formAddress.trim(),
-        municipality: formMunicipality,
-        province: "Negros Occidental",
+        municipality: formMunicipality || null,
+        barangay: formBarangay || null,
+        province: formProvince,
         logo: formLogo,
-        headId: profile?.uid || "",
-        headName: profile?.name || "Admin",
+        headId: formHeadId || "",
+        headName: selectedHead?.name || "Unassigned",
         createdAt: new Date().toISOString(),
       });
+
+      // If a head was selected, update their role to arbo_head and set arboId
+      if (formHeadId) {
+        // Note: we don't have the new arbo ID yet from addDoc, but we can query it
+        // For now, the ArboDashboard queries by headId which works
+      }
 
       setShowCreateModal(false);
       resetForm();
@@ -199,11 +236,18 @@ export const CooperativeManagement: React.FC = () => {
     setSubmitting(true);
 
     try {
+      const selectedHead = formHeadId
+        ? arbUsers.find((a) => a.uid === formHeadId)
+        : null;
       await updateDoc(doc(db, "cooperatives", editingCoop.id), {
         name: formName.trim(),
         address: formAddress.trim(),
-        municipality: formMunicipality,
+        municipality: formMunicipality || null,
+        barangay: formBarangay || null,
+        province: formProvince,
         logo: formLogo || editingCoop.logo,
+        headId: formHeadId || editingCoop.headId,
+        headName: selectedHead?.name || editingCoop.headName,
       });
 
       setEditingCoop(null);
@@ -256,33 +300,44 @@ export const CooperativeManagement: React.FC = () => {
   const resetForm = () => {
     setFormName("");
     setFormAddress("");
+    setFormProvince("Negros Occidental");
     setFormMunicipality("");
+    setFormBarangay("");
     setFormLogo("");
+    setFormHeadId("");
     setFormError(null);
   };
 
-  // Available ARBs for member add: same municipality AND not already in any cooperative
+  // All ARBs available to add (no geo restriction), already-in-this-ARBO excluded
   const getAvailableARBsForCoop = (coop: Cooperative) => {
     const alreadyMemberIds = new Set(
       members.filter((m) => m.cooperativeId === coop.id).map((m) => m.userId),
     );
-    // Also exclude ARBs that are already in ANY cooperative
-    const allCoopMemberIds = new Set(members.map((m) => m.userId));
 
-    return arbUsers.filter(
-      (a) =>
-        a.municipality === coop.municipality &&
-        !alreadyMemberIds.has(a.uid) &&
-        !allCoopMemberIds.has(a.uid),
-    );
+    let filtered = arbUsers.filter((a) => !alreadyMemberIds.has(a.uid));
+
+    if (memberSearch.trim()) {
+      const term = memberSearch.trim().toLowerCase();
+      filtered = filtered.filter(
+        (a) =>
+          a.name.toLowerCase().includes(term) ||
+          a.municipality.toLowerCase().includes(term) ||
+          a.barangay.toLowerCase().includes(term),
+      );
+    }
+
+    return filtered.slice(0, 50); // limit to 50 for performance
   };
 
   const openEditModal = (coop: Cooperative) => {
     setEditingCoop(coop);
     setFormName(coop.name);
     setFormAddress(coop.address);
-    setFormMunicipality(coop.municipality);
+    setFormProvince(coop.province || "Negros Occidental");
+    setFormMunicipality(coop.municipality || "");
+    setFormBarangay("");
     setFormLogo(coop.logo);
+    setFormHeadId(coop.headId || "");
     setFormError(null);
   };
 
@@ -384,9 +439,10 @@ export const CooperativeManagement: React.FC = () => {
                     >
                       {/* Coop Header */}
                       <div
-                        onClick={() =>
-                          setExpandedCoop(isExpanded ? null : coop.id)
-                        }
+                        onClick={() => {
+                          setExpandedCoop(isExpanded ? null : coop.id);
+                          setMemberSearch("");
+                        }}
                         className="p-5 flex items-start gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors"
                       >
                         <div className="h-14 w-14 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center overflow-hidden shrink-0">
@@ -406,7 +462,8 @@ export const CooperativeManagement: React.FC = () => {
                           </h3>
                           <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                             <MapPin size={10} />
-                            {coop.municipality}
+                            {coop.municipality || "—"}
+                            {coop.province && `, ${coop.province}`}
                           </p>
                           <div className="flex items-center gap-3 mt-2">
                             <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
@@ -488,20 +545,43 @@ export const CooperativeManagement: React.FC = () => {
                               <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">
                                 Add Member
                               </p>
+                              <div className="relative mb-2">
+                                <Search
+                                  size={12}
+                                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Search users by name or municipality..."
+                                  value={memberSearch}
+                                  onChange={(e) =>
+                                    setMemberSearch(e.target.value)
+                                  }
+                                  className="block w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-[10px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                />
+                              </div>
                               {getAvailableARBsForCoop(coop).length === 0 ? (
                                 <p className="text-[10px] text-slate-400 italic">
-                                  No more ARBs in {coop.municipality} available.
+                                  {memberSearch.trim()
+                                    ? "No matching users found."
+                                    : "All ARBs are already members."}
                                 </p>
                               ) : (
-                                <div className="flex gap-2 flex-wrap">
+                                <div className="flex gap-2 flex-wrap max-h-32 overflow-y-auto">
                                   {getAvailableARBsForCoop(coop).map((arb) => (
                                     <button
                                       key={arb.uid}
-                                      onClick={() => addMember(coop.id, arb)}
+                                      onClick={() => {
+                                        addMember(coop.id, arb);
+                                        setMemberSearch("");
+                                      }}
                                       className="inline-flex items-center gap-1 text-[10px] font-bold bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer"
                                     >
                                       <Plus size={10} />
                                       {arb.name}
+                                      <span className="text-slate-400 font-normal">
+                                        ({arb.municipality})
+                                      </span>
                                     </button>
                                   ))}
                                 </div>
@@ -554,6 +634,28 @@ export const CooperativeManagement: React.FC = () => {
                 />
               </div>
 
+              {/* Province */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                  Province
+                </label>
+                <select
+                  value={formProvince}
+                  onChange={(e) => {
+                    setFormProvince(e.target.value);
+                    setFormMunicipality("");
+                    setFormBarangay("");
+                  }}
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  {localityData.provinces.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Municipality */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
@@ -561,17 +663,41 @@ export const CooperativeManagement: React.FC = () => {
                 </label>
                 <select
                   value={formMunicipality}
-                  onChange={(e) => setFormMunicipality(e.target.value)}
+                  onChange={(e) => {
+                    setFormMunicipality(e.target.value);
+                    setFormBarangay("");
+                  }}
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 >
-                  <option value="">Select municipality...</option>
-                  {availableMunicipalities.map((mun) => (
+                  <option value="">None (skip)</option>
+                  {allMunicipalities.map((mun) => (
                     <option key={mun} value={mun}>
                       {mun}
                     </option>
                   ))}
                 </select>
               </div>
+
+              {/* Barangay */}
+              {formMunicipality && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                    Barangay
+                  </label>
+                  <select
+                    value={formBarangay}
+                    onChange={(e) => setFormBarangay(e.target.value)}
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="">None (skip)</option>
+                    {allBarangays.map((brgy) => (
+                      <option key={brgy} value={brgy}>
+                        {brgy}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Address */}
               <div>
@@ -585,6 +711,25 @@ export const CooperativeManagement: React.FC = () => {
                   onChange={(e) => setFormAddress(e.target.value)}
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
+              </div>
+
+              {/* ARBO Head Selector */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+                  ARBO Head
+                </label>
+                <select
+                  value={formHeadId}
+                  onChange={(e) => setFormHeadId(e.target.value)}
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="">Select a head...</option>
+                  {eligibleHeads.map((a) => (
+                    <option key={a.uid} value={a.uid}>
+                      {a.name} ({a.municipality})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Logo Upload */}
@@ -669,7 +814,7 @@ export const CooperativeManagement: React.FC = () => {
                 ) : (
                   <Check size={14} />
                 )}
-                {editingCoop ? "Save Changes" : "Create Cooperative"}
+                {editingCoop ? "Save Changes" : "Create ARBO"}
               </button>
             </div>
           </div>

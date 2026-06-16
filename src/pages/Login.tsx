@@ -83,19 +83,28 @@ export const Login: React.FC = () => {
         <div className="absolute -bottom-20 -right-20 w-80 h-80 rounded-full bg-emerald-800 opacity-40"></div>
 
         <div className="flex items-center space-x-3 z-10">
-          <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center p-1 font-bold text-slate-800 shadow-md">
-            <div className="text-center">
-              <p className="text-[10px] leading-3 font-extrabold text-emerald-800">
-                DAR
-              </p>
-              <p className="text-[8px] leading-3 font-semibold text-amber-500">
-                PH
-              </p>
-            </div>
+          <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center p-0.5 shadow-md overflow-hidden">
+            <img
+              src="/dar_logo.png"
+              alt="DAR Logo"
+              className="h-full w-full object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+                const parent = (e.target as HTMLImageElement).parentElement;
+                if (parent) {
+                  parent.innerHTML = `
+                    <div class="text-center">
+                      <p class="text-[10px] leading-3 font-extrabold text-emerald-800">DAR</p>
+                      <p class="text-[8px] leading-3 font-semibold text-amber-500">PH</p>
+                    </div>
+                  `;
+                }
+              }}
+            />
           </div>
           <div>
             <span className="text-lg font-bold tracking-wider text-white">
-              DAR PH Portal
+              ARBO Support
             </span>
             <p className="text-[10px] text-emerald-200 tracking-widest leading-3 m-0">
               Negros Occidental &amp; Oriental
