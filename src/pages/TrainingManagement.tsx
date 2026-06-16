@@ -21,13 +21,10 @@ import {
   Search,
   Calendar,
   Link as LinkIcon,
-  Users,
-  Building2,
   CheckCircle2,
   XCircle,
   Clock,
   Send,
-  Eye,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -196,13 +193,6 @@ export const TrainingManagement: React.FC = () => {
 
   const getTrainingAcks = (trainingId: string) =>
     acks.filter((a) => a.trainingId === trainingId);
-
-  // Get all assigned users for a training (from both direct + coop membership)
-  const getAssignedUserIds = (training: Training): string[] => {
-    const directIds = new Set(training.assignedUserIds);
-    // For coop assignments, we'd need to query cooperativeMembers - simplified for now
-    return Array.from(directIds);
-  };
 
   const createTraining = async () => {
     if (!formName.trim()) {

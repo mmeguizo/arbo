@@ -454,9 +454,15 @@ const GrantsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const memberIds = members.map((m) => m.userId);
-    if (memberIds.length === 0) { setLoading(false); return; }
+    if (memberIds.length === 0) {
+      setLoading(false);
+      return;
+    }
     const unsub = onSnapshot(
-      query(collection(db, "grants"), where("beneficiaryId", "in", memberIds.slice(0, 10))),
+      query(
+        collection(db, "grants"),
+        where("beneficiaryId", "in", memberIds.slice(0, 10)),
+      ),
       (snap) => {
         const list: any[] = [];
         snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
@@ -468,13 +474,20 @@ const GrantsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
     return () => unsub();
   }, [members]);
 
-  if (loading) return <div className="p-8 text-center text-xs text-slate-400">Loading grants...</div>;
+  if (loading)
+    return (
+      <div className="p-8 text-center text-xs text-slate-400">
+        Loading grants...
+      </div>
+    );
   if (grants.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
         <TrendingUp size={32} className="text-slate-300 mx-auto mb-3" />
         <h3 className="text-sm font-bold text-slate-500 mb-1">No Grants Yet</h3>
-        <p className="text-xs text-slate-400">Grants distributed to your members will appear here.</p>
+        <p className="text-xs text-slate-400">
+          Grants distributed to your members will appear here.
+        </p>
       </div>
     );
   }
@@ -493,26 +506,49 @@ const GrantsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
         <tbody className="divide-y divide-slate-100">
           {grants.map((g: any) => (
             <tr key={g.id} className="hover:bg-slate-50">
-              <td className="px-4 py-3 text-xs font-bold text-slate-700">{g.beneficiaryName}</td>
+              <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                {g.beneficiaryName}
+              </td>
               <td className="px-4 py-3">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  g.type === "cash" ? "bg-emerald-50 text-emerald-700" :
-                  g.type === "loan" ? "bg-indigo-50 text-indigo-700" :
-                  g.type === "equipment" ? "bg-teal-50 text-teal-700" : "bg-amber-50 text-amber-700"
-                }`}>
-                  {g.type === "cash" ? "Cash" : g.type === "loan" ? "Loan" : g.type === "equipment" ? "Equipment" : "Materials"}
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    g.type === "cash"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : g.type === "loan"
+                        ? "bg-indigo-50 text-indigo-700"
+                        : g.type === "equipment"
+                          ? "bg-teal-50 text-teal-700"
+                          : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {g.type === "cash"
+                    ? "Cash"
+                    : g.type === "loan"
+                      ? "Loan"
+                      : g.type === "equipment"
+                        ? "Equipment"
+                        : "Materials"}
                 </span>
               </td>
               <td className="px-4 py-3 text-xs font-bold text-slate-800">
-                {g.type === "cash" || g.type === "loan" ? `₱${g.amount?.toLocaleString()}` :
-                 g.type === "equipment" ? `${g.equipmentQuantity ?? 1}x ${g.equipmentItem || ""}` :
-                 `${g.amount} ${g.unit || ""}`}
+                {g.type === "cash" || g.type === "loan"
+                  ? `₱${g.amount?.toLocaleString()}`
+                  : g.type === "equipment"
+                    ? `${g.equipmentQuantity ?? 1}x ${g.equipmentItem || ""}`
+                    : `${g.amount} ${g.unit || ""}`}
               </td>
               <td className="px-4 py-3">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  g.status === "active" ? "bg-emerald-100 text-emerald-700" :
-                  g.status === "overdue" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
-                }`}>{g.status}</span>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    g.status === "active"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : g.status === "overdue"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-blue-100 text-blue-700"
+                  }`}
+                >
+                  {g.status}
+                </span>
               </td>
             </tr>
           ))}
@@ -523,21 +559,25 @@ const GrantsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
 };
 
 const LoansTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
-  arboId,
+  arboId: _arboId,
   members,
 }) => {
   const [loans, setLoans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const memberIds = members.map((m) => m.userId);
-    if (memberIds.length === 0) { setLoading(false); return; }
+    if (memberIds.length === 0) {
+      setLoading(false);
+      return;
+    }
     const unsub = onSnapshot(
       query(collection(db, "grants"), where("type", "==", "loan")),
       (snap) => {
         const list: any[] = [];
         snap.forEach((d) => {
           const data = d.data();
-          if (memberIds.includes(data.beneficiaryId)) list.push({ id: d.id, ...data });
+          if (memberIds.includes(data.beneficiaryId))
+            list.push({ id: d.id, ...data });
         });
         setLoans(list);
         setLoading(false);
@@ -546,32 +586,48 @@ const LoansTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
     return () => unsub();
   }, [members]);
 
-  if (loading) return <div className="p-8 text-center text-xs text-slate-400">Loading loans...</div>;
+  if (loading)
+    return (
+      <div className="p-8 text-center text-xs text-slate-400">
+        Loading loans...
+      </div>
+    );
   if (loans.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
         <FileText size={32} className="text-slate-300 mx-auto mb-3" />
         <h3 className="text-sm font-bold text-slate-500 mb-1">No Loans</h3>
-        <p className="text-xs text-slate-400">Outstanding loans for your members will be tracked here.</p>
+        <p className="text-xs text-slate-400">
+          Outstanding loans for your members will be tracked here.
+        </p>
       </div>
     );
   }
 
-  const totalOutstanding = loans.reduce((s: number, l: any) => s + (l.remainingBalance ?? l.amount ?? 0), 0);
+  const totalOutstanding = loans.reduce(
+    (s: number, l: any) => s + (l.remainingBalance ?? l.amount ?? 0),
+    0,
+  );
 
   return (
     <div>
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-          <p className="text-lg font-extrabold text-indigo-900">{loans.length}</p>
+          <p className="text-lg font-extrabold text-indigo-900">
+            {loans.length}
+          </p>
           <p className="text-[9px] text-slate-400 uppercase">Total Loans</p>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-          <p className="text-lg font-extrabold text-red-700">₱{totalOutstanding.toLocaleString()}</p>
+          <p className="text-lg font-extrabold text-red-700">
+            ₱{totalOutstanding.toLocaleString()}
+          </p>
           <p className="text-[9px] text-slate-400 uppercase">Outstanding</p>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-          <p className="text-lg font-extrabold text-emerald-700">{loans.filter((l: any) => l.status === "active").length}</p>
+          <p className="text-lg font-extrabold text-emerald-700">
+            {loans.filter((l: any) => l.status === "active").length}
+          </p>
           <p className="text-[9px] text-slate-400 uppercase">Active</p>
         </div>
       </div>
@@ -589,14 +645,28 @@ const LoansTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
           <tbody className="divide-y divide-slate-100">
             {loans.map((l: any) => (
               <tr key={l.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 text-xs font-bold text-slate-700">{l.beneficiaryName}</td>
-                <td className="px-4 py-3 text-xs text-slate-800">₱{l.amount?.toLocaleString()}</td>
-                <td className="px-4 py-3 text-xs text-slate-600">{l.interestRate ?? 0}% · {l.loanTermMonths ?? 12}mo</td>
-                <td className="px-4 py-3 text-xs font-bold text-indigo-700">₱{(l.remainingBalance ?? l.amount)?.toLocaleString()}</td>
+                <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                  {l.beneficiaryName}
+                </td>
+                <td className="px-4 py-3 text-xs text-slate-800">
+                  ₱{l.amount?.toLocaleString()}
+                </td>
+                <td className="px-4 py-3 text-xs text-slate-600">
+                  {l.interestRate ?? 0}% · {l.loanTermMonths ?? 12}mo
+                </td>
+                <td className="px-4 py-3 text-xs font-bold text-indigo-700">
+                  ₱{(l.remainingBalance ?? l.amount)?.toLocaleString()}
+                </td>
                 <td className="px-4 py-3">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    l.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
-                  }`}>{l.status}</span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      l.status === "active"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-blue-100 text-blue-700"
+                    }`}
+                  >
+                    {l.status}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -606,9 +676,8 @@ const LoansTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
     </div>
   );
 };
-};
 
-const NotesTab: React.FC<{ arboId: string }> = ({ arboId }) => {
+const NotesTab: React.FC<{ arboId: string }> = ({ arboId: _arboId }) => {
   // Placeholder — will be populated in Phase 6
   return (
     <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">

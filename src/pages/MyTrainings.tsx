@@ -298,7 +298,6 @@ export const MyTrainings: React.FC = () => {
                 </h2>
                 <div className="space-y-2">
                   {pastTrainings.map((t) => {
-                    const ack = getAckForTraining(t.id);
                     return (
                       <div
                         key={t.id}

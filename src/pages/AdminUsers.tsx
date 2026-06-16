@@ -28,6 +28,7 @@ import {
   Power,
   KeyRound,
   Globe,
+  Building2,
 } from "lucide-react";
 
 import localityData from "../data/locality.json";
@@ -54,7 +55,9 @@ export const AdminUsers: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"staff" | "encoder" | "admin" | "arbo_head">("staff");
+  const [role, setRole] = useState<"staff" | "encoder" | "admin" | "arbo_head">(
+    "staff",
+  );
   const [province, setProvince] = useState("Negros Occidental");
   const [barangay, setBarangay] = useState("Isabela");
   const [municipality, setMunicipality] = useState("");
@@ -187,6 +190,23 @@ export const AdminUsers: React.FC = () => {
         }
       }
       setSubmitting(false);
+    }
+  };
+
+  const handleChangeRole = async (
+    userProfile: UserProfile,
+    newRole: UserProfile["role"],
+  ) => {
+    try {
+      await updateDoc(doc(db, "users", userProfile.uid), { role: newRole });
+      setFeedback({
+        type: "success",
+        msg: `${userProfile.name}'s role updated to ${newRole}.`,
+      });
+      await fetchUsers();
+    } catch (err) {
+      console.error(err);
+      setFeedback({ type: "error", msg: "Failed to update role." });
     }
   };
 
@@ -335,7 +355,13 @@ export const AdminUsers: React.FC = () => {
                 <select
                   value={role}
                   onChange={(e) =>
-                    setRole(e.target.value as "staff" | "encoder" | "admin")
+                    setRole(
+                      e.target.value as
+                        | "staff"
+                        | "encoder"
+                        | "admin"
+                        | "arbo_head",
+                    )
                   }
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
                 >
@@ -344,6 +370,9 @@ export const AdminUsers: React.FC = () => {
                   </option>
                   <option value="encoder">
                     DAR Encoder (Land Survey Data Specialist)
+                  </option>
+                  <option value="arbo_head">
+                    ARBO Head (Cooperative Leader)
                   </option>
                   <option value="admin">
                     District Administrator (Final Approver)
@@ -498,12 +527,20 @@ export const AdminUsers: React.FC = () => {
                                   ? "bg-amber-50 border-amber-200 text-amber-700"
                                   : u.role === "encoder"
                                     ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                                    : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                    : u.role === "arbo_head"
+                                      ? "bg-teal-50 border-teal-200 text-teal-700"
+                                      : u.role === "arb"
+                                        ? "bg-slate-100 border-slate-200 text-slate-600"
+                                        : "bg-emerald-50 border-emerald-200 text-emerald-700"
                               }`}
                             >
                               {u.role === "admin" && <Shield size={10} />}
                               {u.role === "encoder" && <Hash size={10} />}
                               {u.role === "staff" && <Briefcase size={10} />}
+                              {u.role === "arbo_head" && (
+                                <Building2 size={10} />
+                              )}
+                              {u.role === "arb" && <Users size={10} />}
                               <span>{u.role}</span>
                             </span>
                           </td>
@@ -513,6 +550,22 @@ export const AdminUsers: React.FC = () => {
                               : "--"}
                           </td>
                           <td className="px-5 py-3 whitespace-nowrap text-right space-x-2">
+                            <select
+                              value={u.role}
+                              onChange={(e) =>
+                                handleChangeRole(
+                                  u,
+                                  e.target.value as UserProfile["role"],
+                                )
+                              }
+                              className="text-[10px] font-bold rounded-lg border border-slate-200 bg-slate-50 py-1 px-2 cursor-pointer focus:border-emerald-500 focus:outline-none"
+                            >
+                              <option value="arb">ARB</option>
+                              <option value="arbo_head">ARBO Head</option>
+                              <option value="staff">Staff</option>
+                              <option value="encoder">Encoder</option>
+                              <option value="admin">Admin</option>
+                            </select>
                             <button
                               onClick={() => handleResetPassword(u.email)}
                               title="Send Password Reset Email"

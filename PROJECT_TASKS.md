@@ -4,11 +4,79 @@
 >
 > **Status key**: `[ ]` todo | `[~]` in-progress | `[x]` done
 >
-> **Last updated**: 2026-06-15 (ALL 6 PHASES COMPLETE)
+> **Last updated**: 2026-06-16 (MAJOR FEATURE EXPANSION)
 
 ---
 
-## Phase 1: Rename "surveyor" → "encoder"
+## Phase 7-14: Major Feature Expansion (2026-06-16)
+
+### Rename Cooperative → Arbo
+
+- [x] 7.1 Sidebar.tsx — "Cooperatives" → "ARBOs"
+- [x] 7.2 CooperativeManagement.tsx — All UI labels, page title, modals, error messages
+- [x] 7.3 GrantManagement.tsx — Coop target toggle, select labels
+- [x] 7.4 MyGrants.tsx — "My Cooperative" → "My ARBO"
+- [x] 7.5 GrantCard.tsx — Coop badge labels
+
+### Arbo Head Role + RBAC
+
+- [x] 8.1 AuthContext.tsx — Added `"arbo_head"` to UserRole, `arboId` to UserProfile
+- [x] 8.2 ProtectedRoute.tsx — Default route for arbo_head → /arbo-dashboard
+- [x] 8.3 Sidebar.tsx — Arbo head nav items (Overview, ARBO Dashboard, CLOA, Grants, Trainings)
+- [x] 8.4 CooperativeManagement.tsx — Only admin sees "Create ARBO" button; staff can view + add members
+- [x] 8.5 App.tsx — `/cooperatives` allows staff, `/arbo-dashboard` added (arbo_head only)
+- [x] 8.6 ArboDashboard.tsx — New page with Members, Trainings, Grants, Loans, Admin Notes tabs
+
+### Grants: Loans + Equipment + Flexible Splits + Material Values
+
+- [x] 9.1 Grant interface — New types: `"loan"` and `"equipment"`; fields: interestRate, loanTermMonths, remainingBalance, equipmentItem, equipmentQuantity, unitValue, splitAmount, totalGrantAmount
+- [x] 9.2 GrantManagement — Loan form (interest rate %, term dropdown), Equipment form (item name + qty + unit value), Material unit value field
+- [x] 9.3 GrantManagement — Flexible split: per-member amount inputs with running total validation (sum ≤ total)
+- [x] 9.4 GrantManagement — KPI cards: Cash, Materials, Loans Outstanding, Equipment Value, Overdue
+- [x] 9.5 GrantManagement — Filter tabs: All, Cash, Materials, Loans, Equipment
+- [x] 9.6 GrantManagement — Donut chart: 4 segments (cash/materials/loans/equipment)
+- [x] 9.7 GrantManagement — Table: type-specific badge colors + amount display
+- [x] 9.8 GrantCard.tsx — Updated Grant interface, icons, badges, and display for all 4 types
+- [x] 9.9 MyGrants.tsx — Updated Grant interface and Firestore data mapping
+
+### Trainings Module — Admin Side
+
+- [x] 10.1 TrainingManagement.tsx — New page: CRUD for trainings, Firestore `/trainings/` + `/trainingAcknowledgments/`
+- [x] 10.2 Training fields: name, purpose, date, status (ongoing/completed), document links (multi-URL)
+- [x] 10.3 Assignment: toggle between Individuals (multi-select ARBs cross-coop) and ARBOs (coop multi-select)
+- [x] 10.4 Expand training row: view acknowledgment status per user (attending/pending/declined + reason)
+- [x] 10.5 Send reminder button per pending user (writes notification)
+- [x] 10.6 App.tsx — `/trainings` route (admin only)
+- [x] 10.7 Sidebar.tsx — "Trainings" nav item for admin
+
+### Trainings Module — User Side
+
+- [x] 11.1 MyTrainings.tsx — New page: upcoming + past trainings, acknowledge/decline with reason
+- [x] 11.2 Acknowledgment modal: "Will Attend" / "Cannot Attend" + reason textarea
+- [x] 11.3 Urgent badge: "X days away" for trainings within 7 days
+- [x] 11.4 Writes acknowledgment to `/trainingAcknowledgments/{trainingId}_{userId}`
+- [x] 11.5 App.tsx — `/my-trainings` route (arb + arbo_head)
+- [x] 11.6 Sidebar.tsx — "My Trainings" nav item for arb + arbo_head
+- [x] 11.7 NotificationContext.tsx — Added training_assigned, training_reminder, training_acknowledged types
+
+### ARBO Head Dashboard
+
+- [x] 12.1 Members tab — Real Firestore query, list all members with join date
+- [x] 12.2 Trainings tab — Shows all trainings for members, pending/acknowledged/declined counts, nudge button
+- [x] 12.3 Grants tab — Table of all grants to members (all 4 types)
+- [x] 12.4 Loans tab — Loan-specific table with outstanding balances, interest rates, status
+- [x] 12.5 Admin Notes tab — Placeholder (ready for future `/arboNotes/` collection)
+
+### Admin User Management Enhancements
+
+- [x] 13.1 AdminUsers.tsx — Now shows ALL users including ARB and arbo_head
+- [x] 13.2 AdminUsers.tsx — Role editing dropdown per user row
+- [x] 13.3 AdminUsers.tsx — Create form includes arbo_head role option
+- [x] 13.4 AdminUsers.tsx — Role badge colors for arb (slate) and arbo_head (teal)
+
+---
+
+## Completed (Archive — Previous Phases)
 
 - [x] 1.1 AuthContext.tsx — Change `UserRole` type to `"arb" | "staff" | "encoder" | "admin"`
 - [x] 1.2 AdminUsers.tsx — Update role dropdown: "Surveyor" → "Encoder", role value `"surveyor"` → `"encoder"`

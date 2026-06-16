@@ -15,7 +15,6 @@ import { exportToCSV } from "../utils/formatters";
 import {
   DollarSign,
   Package,
-  FileText,
   Plus,
   X,
   Search,
@@ -284,9 +283,7 @@ export const GrantManagement: React.FC = () => {
   const totalEquipmentValue = grants
     .filter((g) => g.type === "equipment")
     .reduce((s, g) => s + (g.unitValue ?? 0) * (g.equipmentQuantity ?? 1), 0);
-  const totalARBsWithGrants = new Set(grants.map((g) => g.beneficiaryId)).size;
   const overdueCount = grants.filter((g) => g.status === "overdue").length;
-  const totalReports = reports.length;
 
   const currentYear = new Date().getFullYear();
   const monthlyGrantData = useMemo(() => {
