@@ -31,6 +31,7 @@ export interface Notification {
     | "disputed"
     | "correction_needed"
     | "correction_resolved"
+    | "blocked"
     | "training_assigned"
     | "training_reminder"
     | "training_acknowledged";

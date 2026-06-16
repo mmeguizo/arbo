@@ -633,50 +633,52 @@ export const TrainingManagement: React.FC = () => {
                                 {trainingAcks.map((a) => (
                                   <div
                                     key={a.id}
-                                    className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-xs"
+                                    className="bg-slate-50 rounded-lg px-3 py-2 text-xs"
                                   >
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-bold text-slate-700">
-                                        {a.userName}
-                                      </span>
-                                      <span
-                                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                          a.status === "acknowledged"
-                                            ? "bg-emerald-100 text-emerald-700"
-                                            : a.status === "declined"
-                                              ? "bg-red-100 text-red-700"
-                                              : "bg-amber-100 text-amber-700"
-                                        }`}
-                                      >
-                                        {a.status === "acknowledged"
-                                          ? "✓ Attending"
-                                          : a.status === "declined"
-                                            ? "✗ Declined"
-                                            : "Pending"}
-                                      </span>
-                                      {a.reason && (
-                                        <span className="text-slate-400">
-                                          — {a.reason}
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-bold text-slate-700">
+                                          {a.userName}
                                         </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {a.acknowledgedAt && (
-                                        <span className="text-[10px] text-slate-400">
-                                          {formatDate(a.acknowledgedAt)}
-                                        </span>
-                                      )}
-                                      {a.status === "pending" && (
-                                        <button
-                                          onClick={() =>
-                                            sendReminder(t, a.userId)
-                                          }
-                                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                                        <span
+                                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                            a.status === "acknowledged"
+                                              ? "bg-emerald-100 text-emerald-700"
+                                              : a.status === "declined"
+                                                ? "bg-red-100 text-red-700"
+                                                : "bg-amber-100 text-amber-700"
+                                          }`}
                                         >
-                                          <Send size={10} /> Remind
-                                        </button>
-                                      )}
+                                          {a.status === "acknowledged"
+                                            ? "✓ Attending"
+                                            : a.status === "declined"
+                                              ? "✗ Declined"
+                                              : "Pending"}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {a.acknowledgedAt && (
+                                          <span className="text-[10px] text-slate-400">
+                                            {formatDate(a.acknowledgedAt)}
+                                          </span>
+                                        )}
+                                        {a.status === "pending" && (
+                                          <button
+                                            onClick={() =>
+                                              sendReminder(t, a.userId)
+                                            }
+                                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                                          >
+                                            <Send size={10} /> Remind
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
+                                    {a.status === "declined" && a.reason && (
+                                      <div className="mt-1.5 pt-1.5 border-t border-red-100 text-[10px] text-red-600 italic">
+                                        Reason: {a.reason}
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>

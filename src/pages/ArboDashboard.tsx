@@ -22,7 +22,6 @@ import {
   XCircle,
   Clock,
   Calendar,
-  Link as LinkIcon,
 } from "lucide-react";
 
 interface CoopMember {

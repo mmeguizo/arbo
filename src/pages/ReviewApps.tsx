@@ -28,7 +28,6 @@ import {
   ArrowRight,
   Eye,
   CheckCircle2,
-  Clock,
   ShieldAlert,
   RotateCcw,
   ArrowLeft,
@@ -915,14 +914,6 @@ export const ReviewApps: React.FC = () => {
                                 Bypass: Forward to Admin
                               </button>
                             )}
-                            {selectedApp.status === "verified" && (
-                              <button
-                                onClick={() => updateStatus("verified")}
-                                className="rounded-lg bg-red-600 hover:bg-red-800 text-white py-2 px-4 text-xs font-bold cursor-pointer"
-                              >
-                                Bypass: Admin Approve
-                              </button>
-                            )}
                             <button
                               onClick={() => {
                                 setShowOverride(false);
@@ -1203,7 +1194,7 @@ export const ReviewApps: React.FC = () => {
           applicantName={selectedApp.userName}
           applicantUserId={selectedApp.userId}
           onClose={() => setShowAssignmentModal(false)}
-          onAssigned={(titleNumber) => {
+          onAssigned={(_titleNumber) => {
             setShowAssignmentModal(false);
             // Refresh the app list to show updated status
             setRefreshKey((k) => k + 1);

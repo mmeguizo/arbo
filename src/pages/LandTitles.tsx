@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Sidebar } from "../components/Sidebar";
 import { uploadFile, getLandPhotoPath } from "../utils/storage";
@@ -16,18 +15,13 @@ import {
   MapPin,
   Check,
   AlertCircle,
-  Hash,
   Layers,
   Map,
   Compass,
   FileCheck,
   Globe,
-  ChevronDown,
   Camera,
   Upload,
-  ExternalLink,
-  RotateCcw,
-  Search,
   Edit,
   PlusCircle,
   Trash2,
@@ -91,130 +85,8 @@ const MapCenterUpdater: React.FC<{
   return null;
 };
 
-const SearchableBeneficiarySelect: React.FC<{
-  applicants: ApprovedApplicant[];
-  selectedAppId: string;
-  onSelect: (id: string) => void;
-  totalCount: number;
-  placeholder?: string;
-}> = ({
-  applicants,
-  selectedAppId,
-  onSelect,
-  totalCount,
-  placeholder = "Search beneficiary name, barangay, or ID...",
-}) => {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const filtered = applicants.filter((a) => {
-    const q = search.toLowerCase();
-    return (
-      a.userName.toLowerCase().includes(q) ||
-      a.userBarangay.toLowerCase().includes(q) ||
-      a.id.toLowerCase().includes(q) ||
-      (a.userProvince || "").toLowerCase().includes(q)
-    );
-  });
-
-  const selected = applicants.find((a) => a.id === selectedAppId);
-
-  return (
-    <div ref={dropdownRef} className="relative">
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-          <Search size={16} />
-        </div>
-        <input
-          type="text"
-          value={
-            open
-              ? search
-              : selected
-                ? `${selected.userName} (${selected.userBarangay}) - ID: ${selected.id}`
-                : ""
-          }
-          onChange={(e) => {
-            setSearch(e.target.value);
-            if (!open) setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          placeholder={placeholder}
-          className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
-        />
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-        >
-          <ChevronDown size={16} />
-        </button>
-      </div>
-
-      {open && (
-        <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <div className="px-4 py-6 text-center text-xs text-slate-400 italic">
-              No matches found.
-            </div>
-          ) : (
-            filtered.map((appItem) => {
-              const appProvince = appItem.userProvince || "Negros Occidental";
-              const isSelected = appItem.id === selectedAppId;
-              return (
-                <button
-                  key={appItem.id}
-                  type="button"
-                  onClick={() => {
-                    onSelect(appItem.id);
-                    setOpen(false);
-                    setSearch("");
-                  }}
-                  className={`w-full text-left px-4 py-3 text-xs transition-colors border-b border-slate-50 last:border-0 cursor-pointer ${
-                    isSelected
-                      ? "bg-emerald-50 text-emerald-900 font-bold"
-                      : "hover:bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  <span className="font-semibold">{appItem.userName}</span>
-                  <span className="text-slate-400 ml-1">
-                    ({appItem.userBarangay}, {appProvince})
-                  </span>
-                  <span className="text-[9px] text-slate-400 ml-2 font-mono">
-                    ID: {appItem.id}
-                  </span>
-                </button>
-              );
-            })
-          )}
-          {totalCount > filtered.length && (
-            <div className="px-4 py-2 text-[9px] text-slate-400 bg-slate-50 border-t border-slate-100 text-center">
-              {filtered.length} of {totalCount} shown
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
 export const LandTitles: React.FC = () => {
   const { profile } = useAuth();
-  const navigate = useNavigate();
   const [allTitles, setAllTitles] = useState<ExistingTitle[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
@@ -324,7 +196,7 @@ export const LandTitles: React.FC = () => {
       snap.forEach((d) => {
         const data = d.data() as ExistingTitle;
         if (data.status !== "deleted") {
-          list.push({ titleId: d.id, ...data } as ExistingTitle);
+          list.push({ ...data, titleId: d.id } as ExistingTitle);
         }
       });
       list.sort((a, b) => (b.encodedAt || "").localeCompare(a.encodedAt || ""));

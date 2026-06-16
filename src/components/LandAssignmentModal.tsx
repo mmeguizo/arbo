@@ -16,12 +16,10 @@ import {
   MapPin,
   Hash,
   Layers,
-  FileCheck,
   AlertCircle,
   Check,
   X,
   ArrowRight,
-  ExternalLink,
 } from "lucide-react";
 
 interface AvailableTitle {
