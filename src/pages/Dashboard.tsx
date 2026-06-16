@@ -197,7 +197,7 @@ export const Dashboard: React.FC = () => {
     return (
       <div className="flex h-screen bg-slate-50 overflow-hidden">
         <Sidebar />
-        <div className="flex-1 flex flex-col overflow-y-auto">
+        <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
           <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between">
             <h1 className="text-xl font-bold text-slate-800 m-0">
               Staff Workspace
@@ -270,7 +270,7 @@ export const Dashboard: React.FC = () => {
     return (
       <div className="flex h-screen bg-slate-50 overflow-hidden">
         <Sidebar />
-        <div className="flex-1 flex flex-col overflow-y-auto">
+        <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
           <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between">
             <h1 className="text-xl font-bold text-slate-800 m-0">
               Encoder Workspace
@@ -333,7 +333,7 @@ export const Dashboard: React.FC = () => {
     return (
       <div className="flex h-screen bg-slate-50">
         <Sidebar />
-        <div className="flex-1 flex flex-col overflow-y-auto">
+        <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
           <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between">
             <h1 className="text-xl font-bold text-slate-800 m-0">
               My Workspace
@@ -395,7 +395,7 @@ export const Dashboard: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden relative">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
         {/* Top Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between z-10 shrink-0">
           <div className="text-left">

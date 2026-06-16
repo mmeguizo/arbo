@@ -66,6 +66,9 @@ export const LandAssignmentModal: React.FC<LandAssignmentModalProps> = ({
     null,
   );
   const [psdInput, setPsdInput] = useState("");
+  const [assignTitleType, setAssignTitleType] = useState("");
+  const [assignCloaType, setAssignCloaType] = useState("");
+  const [assignTitleNumber, setAssignTitleNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -176,13 +179,27 @@ export const LandAssignmentModal: React.FC<LandAssignmentModalProps> = ({
   const handleAssign = async () => {
     if (!selectedTitle || !profile) return;
 
-    // Validate TCT reassignment
+    // Validate required title fields
+    if (!assignTitleType) {
+      setError("Please select a Title Type before assigning.");
+      return;
+    }
     if (
-      selectedTitle.titleType === "tct" &&
-      selectedTitle.status === "assigned"
+      (assignTitleType === "cloa" || assignTitleType === "cloa-tct") &&
+      !assignCloaType
     ) {
+      setError("Please select a CLOA Type for this title.");
+      return;
+    }
+    if (!assignTitleNumber.trim()) {
+      setError("Please enter a TCT/CLOA Title Number.");
+      return;
+    }
+
+    // Validate TCT reassignment — check if THIS title is already assigned
+    if (selectedTitle.status === "assigned" && assignTitleType === "tct") {
       setError(
-        `TCT Title "${selectedTitle.titleNumber}" is already assigned to ${selectedTitle.assignedName || "another ARB"}. TCT titles cannot be reassigned.`,
+        `TCT Title "${assignTitleNumber.trim()}" is already assigned to ${selectedTitle.assignedName || "another ARB"}. TCT titles cannot be reassigned.`,
       );
       await broadcastNotification(
         "staff",
@@ -195,7 +212,7 @@ export const LandAssignmentModal: React.FC<LandAssignmentModalProps> = ({
     }
 
     // For CLOA-TCT, PSD input is required
-    if (selectedTitle.titleType === "cloa-tct" && !psdInput.trim()) {
+    if (assignTitleType === "cloa-tct" && !psdInput.trim()) {
       setError("Please enter an ASP/PSD number for this CLOA-TCT assignment.");
       return;
     }
@@ -226,6 +243,9 @@ export const LandAssignmentModal: React.FC<LandAssignmentModalProps> = ({
           applicationId,
           beneficiaryId: applicantUserId,
           beneficiaryName: applicantName,
+          titleType: assignTitleType || null,
+          cloaType: assignCloaType || null,
+          titleNumber: assignTitleNumber.trim().toUpperCase(),
           status: "assigned",
           assignedAt: now,
           assignedBy: profile.name,
@@ -268,14 +288,14 @@ export const LandAssignmentModal: React.FC<LandAssignmentModalProps> = ({
         action: "land_assigned",
         oldStatus: "under_review",
         newStatus: "verified",
-        notes: `Staff ${profile.name} assigned title ${selectedTitle.titleNumber}${psdInput ? ` (PSD: ${psdInput.trim()})` : ""} to ${applicantName} (${applicationId}).`,
+        notes: `Staff ${profile.name} assigned survey ${selectedTitle.lotNumber} as ${assignTitleNumber.trim().toUpperCase()} (${assignTitleType})${psdInput ? ` PSD: ${psdInput.trim()}` : ""} to ${applicantName}.`,
       });
 
       await broadcastNotification(
         "admin",
         "forwarded",
         "Land Title Assigned — Ready for Admin",
-        `Staff ${profile.name} assigned title ${selectedTitle.titleNumber} to ${applicantName}. Application ${applicationId} is now ready for admin approval.`,
+        `Staff ${profile.name} assigned title ${assignTitleNumber.trim().toUpperCase()} to ${applicantName}. Ready for admin approval.`,
         applicationId,
       );
 
@@ -479,8 +499,77 @@ export const LandAssignmentModal: React.FC<LandAssignmentModalProps> = ({
                 </div>
               )}
 
+              {/* Title Fields — staff enters these on assignment */}
+              {selectedTitle && (
+                <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Title Information (to be entered on assignment)
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                        Title Type
+                      </label>
+                      <select
+                        required
+                        value={assignTitleType}
+                        onChange={(e) => {
+                          setAssignTitleType(e.target.value);
+                          if (e.target.value === "tct") setAssignCloaType("");
+                        }}
+                        className="block w-full rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-semibold focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 appearance-none"
+                      >
+                        <option value="">Select</option>
+                        <option value="tct">TCT Only</option>
+                        <option value="cloa">CLOA Only</option>
+                        <option value="cloa-tct">CLOA-TCT (Combined)</option>
+                      </select>
+                    </div>
+
+                    {(assignTitleType === "cloa" ||
+                      assignTitleType === "cloa-tct") && (
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                          CLOA Type
+                        </label>
+                        <select
+                          required
+                          value={assignCloaType}
+                          onChange={(e) => setAssignCloaType(e.target.value)}
+                          className="block w-full rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-semibold focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 appearance-none"
+                        >
+                          <option value="">Select</option>
+                          <option value="split">Split</option>
+                          <option value="field_survey">Field Survey</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      TCT / CLOA Title Number
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <Hash size={16} />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={assignTitleNumber}
+                        onChange={(e) => setAssignTitleNumber(e.target.value)}
+                        placeholder="TCT-123456 or CLOA-789"
+                        className="block w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-11 pr-4 text-xs font-bold focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* PSD Input for CLOA-TCT */}
-              {selectedTitle?.titleType === "cloa-tct" && (
+              {assignTitleType === "cloa-tct" && (
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
                     ASP / PSD Number (required for CLOA-TCT split)

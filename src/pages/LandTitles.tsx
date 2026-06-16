@@ -223,15 +223,12 @@ export const LandTitles: React.FC = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Form Fields
-  const [titleNumber, setTitleNumber] = useState("");
   const [lotNumber, setLotNumber] = useState("");
   const [areaHectares, setAreaHectares] = useState("");
   const [geoLat, setGeoLat] = useState("");
   const [geoLng, setGeoLng] = useState("");
   const [province, setProvince] = useState("");
   const [municipality, setMunicipality] = useState("");
-  const [titleType, setTitleType] = useState(""); // "tct" | "cloa" | "cloa-tct"
-  const [cloaType, setCloaType] = useState(""); // "split" | "field_survey"
 
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
@@ -306,15 +303,12 @@ export const LandTitles: React.FC = () => {
 
   // Reset form
   const resetForm = () => {
-    setTitleNumber("");
     setLotNumber("");
     setAreaHectares("");
     setGeoLat("");
     setGeoLng("");
     setProvince("");
     setMunicipality("");
-    setTitleType("");
-    setCloaType("");
     setPendingPhotoFiles([]);
     setPhotoPreviews([]);
     setIsEditing(false);
@@ -350,15 +344,12 @@ export const LandTitles: React.FC = () => {
   // Open form for editing an existing title
   const handleEdit = (title: ExistingTitle) => {
     if (title.status === "awarded") return; // Guard: can't edit awarded
-    setTitleNumber(title.titleNumber || "");
     setLotNumber(title.lotNumber || "");
     setAreaHectares(String(title.areaHectares || ""));
     setGeoLat(title.geoLat || "");
     setGeoLng(title.geoLng || "");
     setProvince(title.province || "");
     setMunicipality(title.municipality || "");
-    setTitleType(title.titleType || "");
-    setCloaType(title.cloaType || "");
     if (title.landPhotos && title.landPhotos.length > 0) {
       setPhotoPreviews([...title.landPhotos]);
     }
@@ -401,46 +392,19 @@ export const LandTitles: React.FC = () => {
     setSubmitted(false);
 
     if (
-      !titleNumber ||
       !lotNumber ||
       !areaHectares ||
       !geoLat ||
       !geoLng ||
       !province ||
-      !municipality ||
-      !titleType
+      !municipality
     ) {
-      setError("Please complete all required fields including Title Type.");
+      setError("Please complete all required survey fields.");
       return;
     }
-
-    if ((titleType === "cloa" || titleType === "cloa-tct") && !cloaType) {
-      setError("Please select a CLOA Type for this title.");
-      return;
-    }
-
-    const cleanTitle = titleNumber.trim().toUpperCase();
 
     try {
       setLoading(true);
-
-      // Duplicate check (skip for edits)
-      if (!isEditing) {
-        const allTitlesSnap = await getDocs(collection(db, "landTitles"));
-        const isDuplicate = allTitlesSnap.docs.some(
-          (d) =>
-            d.data().titleNumber?.toUpperCase() === cleanTitle &&
-            d.data().status !== "deleted" &&
-            d.id !== existingTitleId,
-        );
-        if (isDuplicate) {
-          setError(
-            `Title "${cleanTitle}" is already registered in the database.`,
-          );
-          setLoading(false);
-          return;
-        }
-      }
 
       // Upload land photos
       const photoUrls: string[] = [];
@@ -467,7 +431,6 @@ export const LandTitles: React.FC = () => {
         // Update existing title
         const titleRef = doc(db, "landTitles", existingTitleId);
         await updateDoc(titleRef, {
-          titleNumber: cleanTitle,
           lotNumber: lotNumber.trim(),
           areaHectares: Number(areaHectares),
           province,
@@ -475,8 +438,6 @@ export const LandTitles: React.FC = () => {
           geoLat: geoLat.trim(),
           geoLng: geoLng.trim(),
           encoderId: profile?.name || "Encoder Officer",
-          titleType: titleType || null,
-          cloaType: cloaType || null,
           encodedAt: new Date().toISOString(),
           ...(photoUrls.length > 0 ? { landPhotos: photoUrls } : {}),
         });
@@ -486,21 +447,23 @@ export const LandTitles: React.FC = () => {
           timestamp: new Date().toISOString(),
           actor: profile?.name || "Encoder",
           actorRole: "encoder",
-          action: "title_updated",
+          action: "survey_updated",
           oldStatus: "unassigned",
           newStatus: "unassigned",
-          notes: `Updated title ${cleanTitle} — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
+          notes: `Updated survey — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
         });
       } else {
-        // Create new title
-        const generatedTitleId = `TTL-${Math.floor(100000 + Math.random() * 900000)}`;
+        // Create new survey
+        const generatedTitleId = `SRV-${Math.floor(100000 + Math.random() * 900000)}`;
 
         await setDoc(doc(db, "landTitles", generatedTitleId), {
           titleId: generatedTitleId,
           applicationId: null,
           beneficiaryId: null,
           beneficiaryName: null,
-          titleNumber: cleanTitle,
+          titleNumber: null,
+          titleType: null,
+          cloaType: null,
           lotNumber: lotNumber.trim(),
           areaHectares: Number(areaHectares),
           province,
@@ -508,8 +471,6 @@ export const LandTitles: React.FC = () => {
           geoLat: geoLat.trim(),
           geoLng: geoLng.trim(),
           encoderId: profile?.name || "Encoder Officer",
-          titleType: titleType || null,
-          cloaType: cloaType || null,
           encodedAt: new Date().toISOString(),
           landPhotos: photoUrls,
           status: "unassigned",
@@ -520,14 +481,14 @@ export const LandTitles: React.FC = () => {
           timestamp: new Date().toISOString(),
           actor: profile?.name || "Encoder",
           actorRole: "encoder",
-          action: "title_created",
+          action: "survey_created",
           oldStatus: null,
           newStatus: "unassigned",
-          notes: `Encoded new land title ${cleanTitle} — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
+          notes: `Encoded new survey — ${areaHectares}ha, Lot ${lotNumber}, ${municipality}`,
         });
       }
 
-      setSubmittedTitle(cleanTitle);
+      setSubmittedTitle(lotNumber);
       setSubmitted(true);
       await fetchAllTitles();
     } catch (err) {
@@ -543,14 +504,14 @@ export const LandTitles: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between z-10 shrink-0">
           <div className="text-left">
             <p className="text-[10px] uppercase font-bold tracking-widest text-emerald-800 m-0">
               DAR Encoder Office
             </p>
             <h1 className="text-xl font-bold text-slate-900 mt-0.5 mb-0">
-              Land Title Entry Dashboard
+              Land Survey Entry Dashboard
             </h1>
           </div>
         </header>
@@ -563,7 +524,7 @@ export const LandTitles: React.FC = () => {
                 DAR Encoder Office
               </p>
               <h1 className="text-xl font-bold text-slate-900 mt-0.5 mb-0">
-                Land Title Registry
+                Land Survey Registry
               </h1>
             </div>
             <button
@@ -575,389 +536,9 @@ export const LandTitles: React.FC = () => {
               className="flex items-center gap-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3 px-5 text-sm font-semibold transition-all shadow-md cursor-pointer"
             >
               <PlusCircle size={16} />
-              <span>Add New Title</span>
+              <span>Add New Survey</span>
             </button>
           </div>
-
-          {/* Add/Edit Form */}
-          {showForm && (
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 text-left">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-slate-900">
-                  {isEditing ? "Edit Land Title" : "New Land Title"}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowForm(false);
-                    resetForm();
-                    setSubmitted(false);
-                  }}
-                  className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {submitted && (
-                <div className="mb-6 rounded-xl bg-emerald-50 p-5 border border-emerald-200 text-sm text-emerald-800">
-                  <div className="flex items-start space-x-2.5">
-                    <FileCheck size={20} className="shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold block">
-                        Title {submittedTitle} —{" "}
-                        {isEditing ? "Updated!" : "Saved!"}
-                      </span>
-                      <span className="text-xs text-emerald-700 mt-1 block">
-                        The land title has been saved and is available for staff
-                        assignment.
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 mt-4 pt-3 border-t border-emerald-200">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSubmitted(false);
-                        setSubmittedTitle("");
-                        resetForm();
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-900 text-white py-2 px-4 text-xs font-bold transition-all cursor-pointer"
-                    >
-                      <RotateCcw size={14} />
-                      <span>Encode Another</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate(
-                          `/search?q=${encodeURIComponent(submittedTitle)}`,
-                        )
-                      }
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 py-2 px-4 text-xs font-bold transition-all cursor-pointer"
-                    >
-                      <ExternalLink size={14} />
-                      <span>View in Search Registry</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {errorVisible && (
-                <div className="mb-6 flex items-start space-x-2.5 rounded-xl bg-red-50 p-4 border border-red-200 text-sm text-red-500">
-                  <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                  <span className="font-semibold">{errorVisible}</span>
-                </div>
-              )}
-
-              {!submitted && (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {/* Title Type */}
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Title Type
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                          <FileCheck size={16} />
-                        </div>
-                        <select
-                          required
-                          value={titleType}
-                          onChange={(e) => {
-                            setTitleType(e.target.value);
-                            if (e.target.value === "tct") setCloaType("");
-                          }}
-                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
-                        >
-                          <option value="">Select title type</option>
-                          <option value="tct">TCT Only</option>
-                          <option value="cloa">CLOA Only</option>
-                          <option value="cloa-tct">CLOA-TCT (Combined)</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* CLOA Type — only when titleType is cloa or cloa-tct */}
-                    {(titleType === "cloa" || titleType === "cloa-tct") && (
-                      <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                          CLOA Type
-                        </label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                            <Layers size={16} />
-                          </div>
-                          <select
-                            required
-                            value={cloaType}
-                            onChange={(e) => setCloaType(e.target.value)}
-                            className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
-                          >
-                            <option value="">Select CLOA type</option>
-                            <option value="split">Split</option>
-                            <option value="field_survey">Field Survey</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                        OCT / TCT Title Number
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                          <Hash size={16} />
-                        </div>
-                        <input
-                          type="text"
-                          required
-                          value={titleNumber}
-                          onChange={(e) => setTitleNumber(e.target.value)}
-                          placeholder="TCT-123456"
-                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-bold"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Lot Number
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                          <Layers size={16} />
-                        </div>
-                        <input
-                          type="text"
-                          required
-                          value={lotNumber}
-                          onChange={(e) => setLotNumber(e.target.value)}
-                          placeholder="Lot 52-B"
-                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Land Area Hectares
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                          <Map size={16} />
-                        </div>
-                        <input
-                          type="number"
-                          step="0.001"
-                          required
-                          value={areaHectares}
-                          onChange={(e) => setAreaHectares(e.target.value)}
-                          placeholder="1.0"
-                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Province
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                          <Globe size={16} />
-                        </div>
-                        <select
-                          required
-                          value={province}
-                          onChange={(e) => {
-                            setProvince(e.target.value);
-                            setMunicipality("");
-                          }}
-                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
-                        >
-                          <option value="">-- Select Province --</option>
-                          {localityData.provinces.map((p) => (
-                            <option key={p.name} value={p.name}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Municipality / City
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                          <MapPin size={16} />
-                        </div>
-                        <select
-                          required
-                          value={municipality}
-                          onChange={(e) => setMunicipality(e.target.value)}
-                          disabled={!province}
-                          className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none disabled:opacity-50"
-                        >
-                          <option value="">
-                            {province
-                              ? "-- Choose Municipality --"
-                              : "Select province first"}
-                          </option>
-                          {municipalities.map((m) => (
-                            <option key={m.code} value={m.name}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                    <div className="md:col-span-2 text-xs font-bold text-slate-600 flex items-center space-x-1.5 mb-1 header">
-                      <Compass size={16} className="text-emerald-800" />
-                      <span>Exact Boundaries Geographic Coordinates (GPS)</span>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                        Latitude
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={geoLat}
-                        onChange={(e) => setGeoLat(e.target.value)}
-                        placeholder="10.2831"
-                        className="block w-full rounded-xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                        Longitude
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={geoLng}
-                        onChange={(e) => setGeoLng(e.target.value)}
-                        placeholder="122.9912"
-                        className="block w-full rounded-xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Interactive Map */}
-                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                    <div className="text-xs font-bold text-slate-600 flex items-center space-x-1.5 mb-3">
-                      <Map size={16} className="text-emerald-800" />
-                      <span>Pin Land Location on Map</span>
-                      <span className="text-[10px] text-slate-400 font-normal ml-auto">
-                        Click map to drop pin / type coordinates above
-                      </span>
-                    </div>
-                    <div className="h-72 rounded-xl overflow-hidden border border-slate-200">
-                      <MapContainer
-                        center={mapCenter}
-                        zoom={mapZoom}
-                        style={{ height: "100%", width: "100%" }}
-                        scrollWheelZoom={true}
-                      >
-                        <TileLayer
-                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        />
-                        <MapClickHandler
-                          onPinDrop={(lat, lng) => {
-                            setGeoLat(lat.toFixed(6));
-                            setGeoLng(lng.toFixed(6));
-                            setMapCenter([lat, lng]);
-                            setMapZoom(16);
-                          }}
-                        />
-                        <MapCenterUpdater center={mapCenter} zoom={mapZoom} />
-                        {parseFloat(geoLat) && parseFloat(geoLng) && (
-                          <Marker
-                            position={[parseFloat(geoLat), parseFloat(geoLng)]}
-                            icon={defaultIcon}
-                          />
-                        )}
-                      </MapContainer>
-                    </div>
-                  </div>
-
-                  {/* Land Photos */}
-                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                    <div className="text-xs font-bold text-slate-600 flex items-center space-x-1.5 mb-3">
-                      <Camera size={16} className="text-emerald-800" />
-                      <span>Land Photos</span>
-                      <span className="text-[10px] text-slate-400 font-normal">
-                        Upload photos of the surveyed land
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-3">
-                      {photoPreviews.map((src, i) => (
-                        <div
-                          key={i}
-                          className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-white"
-                        >
-                          <img
-                            src={src}
-                            alt={`Land photo ${i + 1}`}
-                            className="h-full w-full object-cover"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(i)}
-                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-[8px] cursor-pointer"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                      <label className="aspect-square rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/30 transition-colors">
-                        <Upload size={16} className="text-slate-400" />
-                        <span className="text-[8px] font-bold text-slate-400">
-                          Add Photo
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={handlePhotoUpload}
-                          className="sr-only"
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                    ) : (
-                      <Check size={16} />
-                    )}
-                    <span>{isEditing ? "Update Title" : "Save Title"}</span>
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
 
           {/* Title Registry Table */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -968,20 +549,14 @@ export const LandTitles: React.FC = () => {
               </div>
             ) : allTitles.length === 0 ? (
               <div className="py-12 text-center border border-dashed border-slate-200 rounded-2xl m-4 text-slate-400 italic text-xs">
-                No land titles registered yet. Click "Add New Title" to encode
-                your first land record.
+                No land surveys registered yet. Click "Add New Survey" to encode
+                your first survey record.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                      <th className="px-6 py-3 font-bold text-slate-500 uppercase tracking-wider">
-                        Title Number
-                      </th>
-                      <th className="px-6 py-3 font-bold text-slate-500 uppercase tracking-wider">
-                        Type
-                      </th>
                       <th className="px-6 py-3 font-bold text-slate-500 uppercase tracking-wider">
                         Lot #
                       </th>
@@ -1007,23 +582,6 @@ export const LandTitles: React.FC = () => {
                           key={t.titleId}
                           className="hover:bg-slate-50/50 transition-colors"
                         >
-                          <td className="px-6 py-3 font-extrabold text-slate-900 whitespace-nowrap">
-                            {t.titleNumber}
-                          </td>
-                          <td className="px-6 py-3">
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.titleType === "cloa-tct" ? "bg-purple-100 text-purple-700" : t.titleType === "cloa" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"}`}
-                            >
-                              {(t.titleType || "tct").toUpperCase()}
-                            </span>
-                            {t.cloaType && (
-                              <span className="ml-1 text-[9px] text-slate-400">
-                                {t.cloaType === "split"
-                                  ? "Split"
-                                  : "Field Survey"}
-                              </span>
-                            )}
-                          </td>
                           <td className="px-6 py-3 text-slate-700 font-semibold">
                             {t.lotNumber}
                           </td>
@@ -1095,10 +653,10 @@ export const LandTitles: React.FC = () => {
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-slate-900">
-                      Delete Title?
+                      Delete Survey?
                     </h4>
                     <p className="text-xs text-slate-500 mt-1">
-                      This will soft-delete the title record. It can still be
+                      This will soft-delete the survey record. It can still be
                       found in the audit trail for compliance purposes.
                     </p>
                   </div>
@@ -1118,6 +676,294 @@ export const LandTitles: React.FC = () => {
                     Yes, Delete
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add/Edit Form Modal — fixed overlay, fully outside page layout */}
+          {showForm && (
+            <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 overflow-y-auto p-4 md:p-8">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-6 text-left my-4 relative">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {isEditing ? "Edit Survey" : "New Survey"}
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setShowForm(false);
+                      resetForm();
+                      setSubmitted(false);
+                    }}
+                    className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {submitted && (
+                  <div className="mb-6 rounded-xl bg-emerald-50 p-5 border border-emerald-200 text-sm text-emerald-800">
+                    <div className="flex items-start space-x-2.5">
+                      <FileCheck size={20} className="shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block">
+                          Survey {submittedTitle} —{" "}
+                          {isEditing ? "Updated!" : "Saved!"}
+                        </span>
+                        <span className="text-xs text-emerald-700 mt-1 block">
+                          The survey record has been saved and is available for
+                          staff assignment.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {errorVisible && (
+                  <div className="mb-6 flex items-start space-x-2.5 rounded-xl bg-red-50 p-4 border border-red-200 text-sm text-red-500">
+                    <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                    <span className="font-semibold">{errorVisible}</span>
+                  </div>
+                )}
+
+                {!submitted && (
+                  <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                          Lot Number
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <Layers size={16} />
+                          </div>
+                          <input
+                            type="text"
+                            required
+                            value={lotNumber}
+                            onChange={(e) => setLotNumber(e.target.value)}
+                            placeholder="Lot 52-B"
+                            className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                          Land Area Hectares
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <Map size={16} />
+                          </div>
+                          <input
+                            type="number"
+                            step="0.001"
+                            required
+                            value={areaHectares}
+                            onChange={(e) => setAreaHectares(e.target.value)}
+                            placeholder="1.0"
+                            className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                          Province
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <Globe size={16} />
+                          </div>
+                          <select
+                            required
+                            value={province}
+                            onChange={(e) => {
+                              setProvince(e.target.value);
+                              setMunicipality("");
+                            }}
+                            className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
+                          >
+                            <option value="">-- Select Province --</option>
+                            {localityData.provinces.map((p) => (
+                              <option key={p.name} value={p.name}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                          Municipality / City
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <MapPin size={16} />
+                          </div>
+                          <select
+                            required
+                            value={municipality}
+                            onChange={(e) => setMunicipality(e.target.value)}
+                            disabled={!province}
+                            className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none disabled:opacity-50"
+                          >
+                            <option value="">
+                              {province
+                                ? "-- Choose Municipality --"
+                                : "Select province first"}
+                            </option>
+                            {municipalities.map((m) => (
+                              <option key={m.code} value={m.name}>
+                                {m.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                      <div className="md:col-span-2 text-xs font-bold text-slate-600 flex items-center space-x-1.5 mb-1 header">
+                        <Compass size={16} className="text-emerald-800" />
+                        <span>
+                          Exact Boundaries Geographic Coordinates (GPS)
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                          Latitude
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={geoLat}
+                          onChange={(e) => setGeoLat(e.target.value)}
+                          placeholder="10.2831"
+                          className="block w-full rounded-xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                          Longitude
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={geoLng}
+                          onChange={(e) => setGeoLng(e.target.value)}
+                          placeholder="122.9912"
+                          className="block w-full rounded-xl border border-slate-200 bg-white py-3 px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Interactive Map */}
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                      <div className="text-xs font-bold text-slate-600 flex items-center space-x-1.5 mb-3">
+                        <Map size={16} className="text-emerald-800" />
+                        <span>Pin Land Location on Map</span>
+                        <span className="text-[10px] text-slate-400 font-normal ml-auto">
+                          Click map to drop pin / type coordinates above
+                        </span>
+                      </div>
+                      <div className="h-72 rounded-xl overflow-hidden border border-slate-200">
+                        <MapContainer
+                          center={mapCenter}
+                          zoom={mapZoom}
+                          style={{ height: "100%", width: "100%" }}
+                          scrollWheelZoom={true}
+                        >
+                          <TileLayer
+                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                          />
+                          <MapClickHandler
+                            onPinDrop={(lat, lng) => {
+                              setGeoLat(lat.toFixed(6));
+                              setGeoLng(lng.toFixed(6));
+                              setMapCenter([lat, lng]);
+                              setMapZoom(16);
+                            }}
+                          />
+                          <MapCenterUpdater center={mapCenter} zoom={mapZoom} />
+                          {parseFloat(geoLat) && parseFloat(geoLng) && (
+                            <Marker
+                              position={[
+                                parseFloat(geoLat),
+                                parseFloat(geoLng),
+                              ]}
+                              icon={defaultIcon}
+                            />
+                          )}
+                        </MapContainer>
+                      </div>
+                    </div>
+
+                    {/* Land Photos */}
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                      <div className="text-xs font-bold text-slate-600 flex items-center space-x-1.5 mb-3">
+                        <Camera size={16} className="text-emerald-800" />
+                        <span>Land Photos</span>
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          Upload photos of the surveyed land
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-3">
+                        {photoPreviews.map((src, i) => (
+                          <div
+                            key={i}
+                            className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-white"
+                          >
+                            <img
+                              src={src}
+                              alt={`Land photo ${i + 1}`}
+                              className="h-full w-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(i)}
+                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-[8px] cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                        <label className="aspect-square rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/30 transition-colors">
+                          <Upload size={16} className="text-slate-400" />
+                          <span className="text-[8px] font-bold text-slate-400">
+                            Add Photo
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={handlePhotoUpload}
+                            className="sr-only"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-800 hover:bg-emerald-950 text-white py-3.5 px-6 text-sm font-semibold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                      ) : (
+                        <Check size={16} />
+                      )}
+                      <span>{isEditing ? "Update Survey" : "Save Survey"}</span>
+                    </button>
+                  </form>
+                )}
               </div>
             </div>
           )}

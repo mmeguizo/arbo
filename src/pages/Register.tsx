@@ -610,7 +610,29 @@ export const Register: React.FC = () => {
                 Supported formats: JPG, PNG, PDF. Max size 5MB.
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Birth Certificate */}
+                <div className="border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-50 p-5 rounded-2xl transition-all relative flex flex-col items-center justify-center text-center">
+                  <Upload size={24} className="text-slate-400 mb-2" />
+                  <span className="text-xs font-bold text-slate-800">
+                    Birth Certificate
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-1">
+                    {docNames.birthCert || "No file chosen"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => handleFileChange(e, "birthCert")}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  {hasDoc("birthCert") && (
+                    <span className="absolute top-2 right-2 text-[10px] uppercase font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                      Ready
+                    </span>
+                  )}
+                </div>
+
                 {/* Government ID */}
                 <div className="border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-50 p-5 rounded-2xl transition-all relative flex flex-col items-center justify-center text-center">
                   <Upload size={24} className="text-slate-400 mb-2" />

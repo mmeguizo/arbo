@@ -276,7 +276,7 @@ export const Reports: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between shrink-0 z-10">
           <div className="text-left">
