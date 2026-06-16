@@ -81,8 +81,9 @@ export const CooperativeManagement: React.FC = () => {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Member search
+  // Member search (for both adding and filtering existing)
   const [memberSearch, setMemberSearch] = useState("");
+  const [existingMemberSearch, setExistingMemberSearch] = useState("");
 
   useEffect(() => {
     const unsubCoops = onSnapshot(collection(db, "cooperatives"), (snap) => {
@@ -428,20 +429,43 @@ export const CooperativeManagement: React.FC = () => {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 {cooperatives.map((coop) => {
                   const coopMembers = getCoopMembers(coop.id);
                   const isExpanded = expandedCoop === coop.id;
+
+                  const filteredMembers = existingMemberSearch.trim()
+                    ? coopMembers.filter(
+                        (m) =>
+                          m.userName
+                            .toLowerCase()
+                            .includes(
+                              existingMemberSearch.trim().toLowerCase(),
+                            ) ||
+                          m.userMunicipality
+                            .toLowerCase()
+                            .includes(
+                              existingMemberSearch.trim().toLowerCase(),
+                            ) ||
+                          m.userBarangay
+                            .toLowerCase()
+                            .includes(
+                              existingMemberSearch.trim().toLowerCase(),
+                            ),
+                      )
+                    : coopMembers;
+
                   return (
                     <div
                       key={coop.id}
                       className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
                     >
-                      {/* Coop Header */}
+                      {/* ARBO Header */}
                       <div
                         onClick={() => {
                           setExpandedCoop(isExpanded ? null : coop.id);
                           setMemberSearch("");
+                          setExistingMemberSearch("");
                         }}
                         className="p-5 flex items-start gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors"
                       >
@@ -465,128 +489,212 @@ export const CooperativeManagement: React.FC = () => {
                             {coop.municipality || "—"}
                             {coop.province && `, ${coop.province}`}
                           </p>
-                          <div className="flex items-center gap-3 mt-2">
+                          <div className="flex items-center gap-3 mt-2 flex-wrap">
                             <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full">
                               {coopMembers.length} member
                               {coopMembers.length !== 1 ? "s" : ""}
                             </span>
-                            <span className="text-[10px] text-slate-400">
-                              Head: {coop.headName}
-                            </span>
+                            {coop.headName && coop.headId && (
+                              <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                👑 Head: {coop.headName}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Expanded - Members */}
+                      {/* Expanded Section */}
                       {isExpanded && (
-                        <div className="px-5 pb-5 border-t border-slate-100 pt-4 space-y-4">
-                          {/* Members List */}
-                          <div>
-                            <div className="flex items-center justify-between mb-3">
-                              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                Members ({coopMembers.length})
-                              </h4>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEditModal(coop);
-                                  }}
-                                  className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 px-2 py-1 rounded-lg border border-slate-200 hover:border-emerald-300 cursor-pointer flex items-center gap-1"
-                                >
-                                  <Edit3 size={10} />
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteCooperative(coop);
-                                  }}
-                                  className="text-[10px] font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded-lg border border-red-200 hover:border-red-300 cursor-pointer flex items-center gap-1"
-                                >
-                                  <Trash2 size={10} />
-                                  Delete
-                                </button>
-                              </div>
+                        <div className="border-t border-slate-100">
+                          {/* Toolbar */}
+                          <div className="px-5 py-3 flex items-center justify-between gap-3 flex-wrap bg-slate-50/50">
+                            <div className="relative flex-1 max-w-xs">
+                              <Search
+                                size={12}
+                                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Search existing members..."
+                                value={existingMemberSearch}
+                                onChange={(e) =>
+                                  setExistingMemberSearch(e.target.value)
+                                }
+                                className="block w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-[10px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              />
                             </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditModal(coop);
+                                }}
+                                className="text-[10px] font-bold text-slate-500 hover:text-emerald-700 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-emerald-300 cursor-pointer flex items-center gap-1 transition-colors"
+                              >
+                                <Edit3 size={10} />
+                                Edit
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteCooperative(coop);
+                                }}
+                                className="text-[10px] font-bold text-red-500 hover:text-red-700 px-2.5 py-1.5 rounded-lg border border-red-200 hover:border-red-300 cursor-pointer flex items-center gap-1 transition-colors"
+                              >
+                                <Trash2 size={10} />
+                                Delete
+                              </button>
+                            </div>
+                          </div>
 
-                            {coopMembers.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic">
-                                No members yet.
+                          {/* Members Table */}
+                          <div className="px-5 py-3">
+                            {filteredMembers.length === 0 ? (
+                              <div className="text-center py-8">
+                                <Users
+                                  size={24}
+                                  className="text-slate-200 mx-auto mb-2"
+                                />
+                                <p className="text-xs text-slate-400">
+                                  {coopMembers.length === 0
+                                    ? "No members in this ARBO yet."
+                                    : "No members match your search."}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead className="text-[9px] uppercase font-bold text-slate-400">
+                                    <tr>
+                                      <th className="text-left py-2 pr-3">
+                                        Member
+                                      </th>
+                                      <th className="text-left py-2 pr-3">
+                                        Municipality
+                                      </th>
+                                      <th className="text-left py-2 pr-3">
+                                        Barangay
+                                      </th>
+                                      <th className="text-left py-2 pr-3">
+                                        Role
+                                      </th>
+                                      <th className="text-left py-2 pr-3">
+                                        Joined
+                                      </th>
+                                      <th className="text-right py-2"></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-50">
+                                    {filteredMembers.map((member) => {
+                                      const isHead =
+                                        member.userId === coop.headId;
+                                      return (
+                                        <tr
+                                          key={member.id}
+                                          className="hover:bg-slate-50/50 transition-colors"
+                                        >
+                                          <td className="py-2 pr-3">
+                                            <div className="flex items-center gap-2">
+                                              <span className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-600 uppercase">
+                                                {member.userName.substring(
+                                                  0,
+                                                  2,
+                                                )}
+                                              </span>
+                                              <span className="font-bold text-slate-700">
+                                                {member.userName}
+                                              </span>
+                                              {isHead && (
+                                                <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">
+                                                  Head
+                                                </span>
+                                              )}
+                                            </div>
+                                          </td>
+                                          <td className="py-2 pr-3 text-slate-500">
+                                            {member.userMunicipality || "—"}
+                                          </td>
+                                          <td className="py-2 pr-3 text-slate-500">
+                                            {member.userBarangay || "—"}
+                                          </td>
+                                          <td className="py-2 pr-3">
+                                            <span
+                                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isHead ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}
+                                            >
+                                              {isHead ? "Head" : "Member"}
+                                            </span>
+                                          </td>
+                                          <td className="py-2 pr-3 text-slate-400 text-[10px]">
+                                            {new Date(
+                                              member.joinedAt,
+                                            ).toLocaleDateString()}
+                                          </td>
+                                          <td className="py-2 text-right">
+                                            <button
+                                              onClick={() =>
+                                                removeMember(member.id)
+                                              }
+                                              className="text-red-400 hover:text-red-600 p-1 cursor-pointer"
+                                              title="Remove member"
+                                            >
+                                              <X size={12} />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Add Member Section */}
+                          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/30">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">
+                              Add New Member
+                            </p>
+                            <div className="relative mb-2">
+                              <Search
+                                size={12}
+                                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Search users by name or municipality..."
+                                value={memberSearch}
+                                onChange={(e) =>
+                                  setMemberSearch(e.target.value)
+                                }
+                                className="block w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-[10px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              />
+                            </div>
+                            {getAvailableARBsForCoop(coop).length === 0 ? (
+                              <p className="text-[10px] text-slate-400 italic">
+                                {memberSearch.trim()
+                                  ? "No matching users found."
+                                  : "All ARBs are already members."}
                               </p>
                             ) : (
-                              <div className="space-y-1.5">
-                                {coopMembers.map((member) => (
-                                  <div
-                                    key={member.id}
-                                    className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-xs"
+                              <div className="flex gap-2 flex-wrap max-h-36 overflow-y-auto">
+                                {getAvailableARBsForCoop(coop).map((arb) => (
+                                  <button
+                                    key={arb.uid}
+                                    onClick={() => {
+                                      addMember(coop.id, arb);
+                                      setMemberSearch("");
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer"
                                   >
-                                    <div>
-                                      <span className="font-bold text-slate-700">
-                                        {member.userName}
-                                      </span>
-                                      <span className="text-slate-400 ml-2">
-                                        {member.userMunicipality}
-                                      </span>
-                                    </div>
-                                    <button
-                                      onClick={() => removeMember(member.id)}
-                                      className="text-red-400 hover:text-red-600 cursor-pointer"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  </div>
+                                    <Plus size={10} />
+                                    {arb.name}
+                                    <span className="text-slate-400 font-normal">
+                                      ({arb.municipality})
+                                    </span>
+                                  </button>
                                 ))}
                               </div>
                             )}
-
-                            {/* Add Member Section */}
-                            <div className="mt-3 pt-3 border-t border-slate-100">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">
-                                Add Member
-                              </p>
-                              <div className="relative mb-2">
-                                <Search
-                                  size={12}
-                                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                                />
-                                <input
-                                  type="text"
-                                  placeholder="Search users by name or municipality..."
-                                  value={memberSearch}
-                                  onChange={(e) =>
-                                    setMemberSearch(e.target.value)
-                                  }
-                                  className="block w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-[10px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                                />
-                              </div>
-                              {getAvailableARBsForCoop(coop).length === 0 ? (
-                                <p className="text-[10px] text-slate-400 italic">
-                                  {memberSearch.trim()
-                                    ? "No matching users found."
-                                    : "All ARBs are already members."}
-                                </p>
-                              ) : (
-                                <div className="flex gap-2 flex-wrap max-h-32 overflow-y-auto">
-                                  {getAvailableARBsForCoop(coop).map((arb) => (
-                                    <button
-                                      key={arb.uid}
-                                      onClick={() => {
-                                        addMember(coop.id, arb);
-                                        setMemberSearch("");
-                                      }}
-                                      className="inline-flex items-center gap-1 text-[10px] font-bold bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer"
-                                    >
-                                      <Plus size={10} />
-                                      {arb.name}
-                                      <span className="text-slate-400 font-normal">
-                                        ({arb.municipality})
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
                           </div>
                         </div>
                       )}
