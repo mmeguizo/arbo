@@ -1086,10 +1086,23 @@ export const LoanApplication: React.FC = () => {
                   </div>
                   {cooperativeLoans.map((loan) => {
                     const loanPayments = paymentsForLoan(loan.id);
+                    const scheduledPayments = loanPayments.filter(
+                      (payment) => !payment.isEarlyRepayment,
+                    );
                     const expanded = expandedLoan === loan.id;
                     const ownedBalance = profile
                       ? calculateOwnedBalance(loan, payments, profile.uid)
                       : 0;
+                    const pendingEarlyRepayment =
+                      profile &&
+                      loanPayments.some(
+                        (payment) =>
+                          payment.isEarlyRepayment &&
+                          payment.memberId === profile.uid &&
+                          !payment.verifiedAt &&
+                          (payment.status === "paid" ||
+                            payment.status === "partial"),
+                      );
                     return (
                       <section
                         key={loan.id}
@@ -1131,15 +1144,23 @@ export const LoanApplication: React.FC = () => {
                                 Your remaining cooperative share:{" "}
                                 <b>{money(ownedBalance)}</b>
                               </span>
-                              {loan.status === "active" && ownedBalance > 0 && (
-                                <button
-                                  onClick={() =>
-                                    openEarlyRepaymentModal(loan)
-                                  }
-                                  className="rounded-lg bg-indigo-700 px-3 py-2 text-[10px] font-bold text-white"
-                                >
-                                  Repay My Share Early
-                                </button>
+                              {pendingEarlyRepayment ? (
+                                <span className="font-semibold text-amber-700">
+                                  Early repayment is awaiting admin
+                                  verification.
+                                </span>
+                              ) : (
+                                loan.status === "active" &&
+                                ownedBalance > 0 && (
+                                  <button
+                                    onClick={() =>
+                                      openEarlyRepaymentModal(loan)
+                                    }
+                                    className="rounded-lg bg-indigo-700 px-3 py-2 text-[10px] font-bold text-white"
+                                  >
+                                    Repay My Share Early
+                                  </button>
+                                )
                               )}
                             </div>
                             <div className="overflow-x-auto">
@@ -1155,7 +1176,7 @@ export const LoanApplication: React.FC = () => {
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                  {loanPayments.map((payment) => {
+                                  {scheduledPayments.map((payment) => {
                                     const canManagePayment =
                                       profile &&
                                       canManageLoanPayment(
@@ -1191,11 +1212,7 @@ export const LoanApplication: React.FC = () => {
                                                 : `${paymentStatus.bgColor} ${paymentStatus.color}`
                                             }`}
                                           >
-                                            {payment.isEarlyRepayment
-                                              ? payment.verifiedAt
-                                                ? "Early repayment verified"
-                                                : "Early repayment pending review"
-                                              : pendingVerification
+                                            {pendingVerification
                                                 ? "Pending verification"
                                               : paymentStatus.label}
                                           </span>
