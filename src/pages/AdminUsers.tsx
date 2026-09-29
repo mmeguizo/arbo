@@ -27,6 +27,7 @@ import {
   PowerOff,
   Power,
   KeyRound,
+  Pencil,
   Globe,
   Building2,
   Search,
@@ -41,6 +42,9 @@ interface UserProfile {
   uid: string;
   name: string;
   email: string;
+  address?: string;
+  age?: number;
+  contact?: string;
   role: "arb" | "arbo_head" | "staff" | "encoder" | "admin";
   barangay: string;
   municipality: string;
@@ -65,6 +69,17 @@ export const AdminUsers: React.FC = () => {
   const [province, setProvince] = useState("Negros Occidental");
   const [barangay, setBarangay] = useState("Isabela");
   const [municipality, setMunicipality] = useState("");
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    address: "",
+    age: "",
+    contact: "",
+    province: "",
+    municipality: "",
+    barangay: "",
+  });
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -80,6 +95,35 @@ export const AdminUsers: React.FC = () => {
   const [page, setPage] = useState(1);
   const pageSize = 15;
 
+  const municipalities = React.useMemo(() => {
+    const selectedProvince = localityData.provinces.find(
+      (p) => p.name === province,
+    );
+    return (
+      selectedProvince?.municipalities
+        .map((m) => m.name)
+        .sort((a, b) => a.localeCompare(b)) || []
+    );
+  }, [province]);
+
+  const editMunicipalities = React.useMemo(() => {
+    const selectedProvince = localityData.provinces.find(
+      (p) => p.name === editForm.province,
+    );
+    const names =
+      selectedProvince?.municipalities
+        .map((m) => m.name)
+        .sort((a, b) => a.localeCompare(b)) || [];
+
+    if (
+      editForm.municipality &&
+      !names.some((name) => name === editForm.municipality)
+    ) {
+      return [editForm.municipality, ...names];
+    }
+    return names;
+  }, [editForm.province, editForm.municipality]);
+
   const fetchUsers = async () => {
     try {
       const snap = await getDocs(collection(db, "users"));
@@ -90,6 +134,9 @@ export const AdminUsers: React.FC = () => {
           uid: d.id,
           name: u.name || "Unnamed",
           email: u.email || "",
+          address: u.address || "",
+          age: typeof u.age === "number" ? u.age : undefined,
+          contact: u.contact || "",
           role: (u.role as UserProfile["role"]) || "arb",
           barangay: u.barangay || "",
           municipality: u.municipality || "",
@@ -237,6 +284,68 @@ export const AdminUsers: React.FC = () => {
     } catch (err) {
       console.error("Failed to toggle status", err);
       setFeedback({ type: "error", msg: "Failed to update user status." });
+    }
+  };
+
+  const handleOpenEdit = (userProfile: UserProfile) => {
+    setEditingUser(userProfile);
+    setEditForm({
+      name: userProfile.name,
+      address: userProfile.address || "",
+      age: userProfile.age?.toString() || "",
+      contact: userProfile.contact || "",
+      province: userProfile.province || "",
+      municipality: userProfile.municipality || "",
+      barangay: userProfile.barangay || "",
+    });
+    setFeedback(null);
+  };
+
+  const handleEditProvinceChange = (nextProvince: string) => {
+    setEditForm((current) => ({
+      ...current,
+      province: nextProvince,
+      municipality: "",
+    }));
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    if (!editForm.name.trim()) {
+      setFeedback({ type: "error", msg: "Name is required." });
+      return;
+    }
+
+    if (editForm.age && Number.isNaN(Number(editForm.age))) {
+      setFeedback({ type: "error", msg: "Age must be a valid number." });
+      return;
+    }
+
+    setEditSubmitting(true);
+    setFeedback(null);
+    try {
+      await updateDoc(doc(db, "users", editingUser.uid), {
+        name: editForm.name.trim(),
+        address: editForm.address.trim(),
+        age: editForm.age ? Number(editForm.age) : null,
+        contact: editForm.contact.trim(),
+        province: editForm.province,
+        municipality: editForm.municipality,
+        barangay: editForm.barangay.trim(),
+      });
+      setEditingUser(null);
+      setFeedback({
+        type: "success",
+        msg: `${editForm.name.trim()}'s profile was updated.`,
+      });
+      await fetchUsers();
+    } catch (err) {
+      console.error("Failed to update user profile:", err);
+      setFeedback({ type: "error", msg: "Failed to update user profile." });
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -451,7 +560,10 @@ export const AdminUsers: React.FC = () => {
                   <select
                     required
                     value={province}
-                    onChange={(e) => setProvince(e.target.value)}
+                    onChange={(e) => {
+                      setProvince(e.target.value);
+                      setMunicipality("");
+                    }}
                     className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold appearance-none"
                   >
                     {localityData.provinces.map((p) => (
@@ -468,14 +580,20 @@ export const AdminUsers: React.FC = () => {
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                   Municipality / City
                 </label>
-                <input
-                  type="text"
+                <select
                   required
                   value={municipality}
                   onChange={(e) => setMunicipality(e.target.value)}
-                  placeholder="Kabankalan City"
-                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
-                />
+                  disabled={!province}
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">Select municipality</option>
+                  {municipalities.map((municipalityName) => (
+                    <option key={municipalityName} value={municipalityName}>
+                      {municipalityName}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Office */}
@@ -652,6 +770,13 @@ export const AdminUsers: React.FC = () => {
                               : "--"}
                           </td>
                           <td className="px-5 py-3 whitespace-nowrap text-right space-x-2">
+                            <button
+                              onClick={() => handleOpenEdit(u)}
+                              title="Edit Profile"
+                              className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
+                            >
+                              <Pencil size={12} />
+                            </button>
                             <select
                               value={u.role}
                               onChange={(e) =>
@@ -760,6 +885,189 @@ export const AdminUsers: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-800">
+                  User Profile
+                </p>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Edit {editingUser.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="rounded-lg px-3 py-1 text-sm font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleUpdateProfile}
+              className="grid max-h-[75vh] grid-cols-1 gap-4 overflow-y-auto p-6 md:grid-cols-2"
+            >
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Full Name
+                </label>
+                <input
+                  required
+                  value={editForm.name}
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      name: e.target.value,
+                    }))
+                  }
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Email (read-only)
+                </label>
+                <input
+                  value={editingUser.email}
+                  readOnly
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Contact Number
+                </label>
+                <input
+                  value={editForm.contact}
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      contact: e.target.value,
+                    }))
+                  }
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Age
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={editForm.age}
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      age: e.target.value,
+                    }))
+                  }
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Province
+                </label>
+                <select
+                  value={editForm.province}
+                  onChange={(e) => handleEditProvinceChange(e.target.value)}
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="">Select province</option>
+                  {localityData.provinces.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Municipality / City
+                </label>
+                <select
+                  value={editForm.municipality}
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      municipality: e.target.value,
+                    }))
+                  }
+                  disabled={!editForm.province}
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">Select municipality</option>
+                  {editMunicipalities.map((municipalityName) => (
+                    <option key={municipalityName} value={municipalityName}>
+                      {municipalityName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Barangay / Office
+                </label>
+                <input
+                  value={editForm.barangay}
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      barangay: e.target.value,
+                    }))
+                  }
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Address
+                </label>
+                <textarea
+                  rows={3}
+                  value={editForm.address}
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      address: e.target.value,
+                    }))
+                  }
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 md:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="rounded-xl bg-emerald-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-950 disabled:opacity-50"
+                >
+                  {editSubmitting ? "Saving..." : "Save Profile"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

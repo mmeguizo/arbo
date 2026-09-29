@@ -1,10 +1,4 @@
-import {
-  ref,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
-import { storage } from "../firebase/config";
+import { supabase, supabaseStorageBucket } from "../supabase/config";
 
 /**
  * Resize an image file to max dimensions using canvas before upload.
@@ -73,7 +67,7 @@ const resizeImage = (
 };
 
 /**
- * Upload a file to Firebase Storage and return the download URL.
+ * Upload a file to Supabase Storage and return its public URL.
  * Images are auto-resized before upload.
  *
  * @param file - The File object to upload
@@ -84,34 +78,69 @@ export const uploadFile = async (file: File, path: string): Promise<string> => {
   // Resize image if applicable
   const resized = await resizeImage(file);
 
-  const storageRef = ref(storage, path);
-  const snapshot = await uploadBytesResumable(storageRef, resized, {
-    contentType: resized.type,
-  });
+  const { error } = await supabase.storage
+    .from(supabaseStorageBucket)
+    .upload(path, resized, {
+      contentType: resized.type || file.type || "application/octet-stream",
+      upsert: false,
+    });
 
-  const downloadUrl = await getDownloadURL(snapshot.ref);
-  return downloadUrl;
+  if (error) {
+    if (error.message.toLowerCase().includes("row-level security")) {
+      throw new Error(
+        "Supabase Storage upload is blocked by its storage.objects policy. Add an INSERT policy for the public uploads bucket.",
+      );
+    }
+    throw new Error(
+      `Supabase Storage upload failed for ${path}: ${error.message}`,
+    );
+  }
+
+  const { data } = supabase.storage
+    .from(supabaseStorageBucket)
+    .getPublicUrl(path);
+
+  if (!data.publicUrl) {
+    throw new Error(`Supabase Storage returned no public URL for ${path}.`);
+  }
+
+  return data.publicUrl;
+};
+
+const getSupabaseStoragePath = (url: string): string | null => {
+  try {
+    const parsedUrl = new URL(url);
+    const marker = `/storage/v1/object/public/${supabaseStorageBucket}/`;
+    const markerIndex = parsedUrl.pathname.indexOf(marker);
+
+    if (markerIndex === -1) {
+      return null;
+    }
+
+    return decodeURIComponent(
+      parsedUrl.pathname.slice(markerIndex + marker.length),
+    );
+  } catch {
+    return null;
+  }
 };
 
 /**
- * Delete a file from Firebase Storage given its download URL.
- * Attempts to parse the URL to extract the storage path.
- * If parsing fails, logs a warning but does not throw.
+ * Delete a file from Supabase Storage given its public URL.
+ * Legacy Firebase Storage URLs are intentionally left untouched.
  */
 export const deleteFile = async (url: string): Promise<void> => {
-  try {
-    // Extract path from Firebase Storage URL
-    // URLs look like: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedPath}?alt=media&token=...
-    const decodedUrl = decodeURIComponent(url);
-    const baseMatch = decodedUrl.match(/\/o\/(.+?)(?:\?|$)/);
-    if (baseMatch) {
-      const filePath = baseMatch[1];
-      const fileRef = ref(storage, filePath);
-      await deleteObject(fileRef);
-    }
-  } catch (err) {
-    console.warn("Could not delete file from storage:", err);
-    // Non-fatal — the URL in Firestore will simply be orphaned
+  const path = getSupabaseStoragePath(url);
+  if (!path) {
+    return;
+  }
+
+  const { error } = await supabase.storage
+    .from(supabaseStorageBucket)
+    .remove([path]);
+
+  if (error) {
+    console.warn("Could not delete file from Supabase Storage:", error);
   }
 };
 

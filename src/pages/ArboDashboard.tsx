@@ -7,8 +7,22 @@ import {
   where,
   onSnapshot,
   addDoc,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+import { broadcastNotification } from "../contexts/NotificationContext";
+import {
+  FREQUENCY_LABELS,
+  LOAN_STATUS_CONFIG,
+  PAYMENT_STATUS_CONFIG,
+  checkLoanHistory,
+  generateLoanId,
+  type PaymentFrequency,
+  type Loan,
+  type LoanPayment,
+  type CooperativeLoanAllocation,
+} from "../types/loan";
 import {
   Users,
   Building2,
@@ -197,7 +211,7 @@ export const ArboDashboard: React.FC = () => {
           <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
             <Users size={14} className="text-emerald-700" />
             <span className="text-[10px] font-bold text-emerald-800 uppercase">
-              {members.length} Member{members.length !== 1 ? "s" : ""}
+              {members.length + 1} Participant{members.length + 1 !== 1 ? "s" : ""}
             </span>
           </div>
         </header>
@@ -236,7 +250,13 @@ export const ArboDashboard: React.FC = () => {
             <GrantsTab arboId={arbo.id} members={members} />
           )}
           {activeTab === "loans" && (
-            <LoansTab arboId={arbo.id} members={members} />
+            <LoansTab
+              arboId={arbo.id}
+              arboName={arbo.name}
+              members={members}
+              verifierId={profile?.uid || ""}
+              applicantName={profile?.name || arbo.headName}
+            />
           )}
           {activeTab === "notes" && <NotesTab arboId={arbo.id} />}
         </main>
@@ -652,33 +672,99 @@ const GrantsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
   );
 };
 
-const LoansTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
-  arboId: _arboId,
+const LoansTab: React.FC<{
+  arboId: string;
+  arboName: string;
+  members: CoopMember[];
+  verifierId: string;
+  applicantName: string;
+}> = ({
+  arboId,
+  arboName,
   members,
+  verifierId,
+  applicantName,
 }) => {
-  const [loans, setLoans] = useState<any[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [payments, setPayments] = useState<LoanPayment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedLoanId, setExpandedLoanId] = useState<string | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [paymentForDispute, setPaymentForDispute] = useState<LoanPayment | null>(null);
+  const [disputeNotes, setDisputeNotes] = useState("");
+  const [disputeError, setDisputeError] = useState<string | null>(null);
+  const [showCoopLoanModal, setShowCoopLoanModal] = useState(false);
+  const [resubmittingCoopLoan, setResubmittingCoopLoan] = useState<Loan | null>(
+    null,
+  );
+  const [coopPurpose, setCoopPurpose] = useState("");
+  const [coopAmount, setCoopAmount] = useState("");
+  const [coopAllocations, setCoopAllocations] = useState<Record<string, string>>({});
+  const [coopTerm, setCoopTerm] = useState("12");
+  const [coopFrequency, setCoopFrequency] =
+    useState<PaymentFrequency>("monthly");
+  const [coopResubmissionNotes, setCoopResubmissionNotes] = useState("");
+  const [coopError, setCoopError] = useState<string | null>(null);
+  const [coopSubmitting, setCoopSubmitting] = useState(false);
+
+  const loanParticipants: CoopMember[] = [
+    {
+      id: `head-${verifierId}`,
+      cooperativeId: arboId,
+      userId: verifierId,
+      userName: `${applicantName} (ARBO Head)`,
+      userMunicipality: "",
+      userBarangay: "",
+      joinedAt: "",
+    },
+    ...members.filter((member) => member.userId !== verifierId),
+  ];
+
   useEffect(() => {
-    const memberIds = members.map((m) => m.userId);
-    if (memberIds.length === 0) {
-      setLoading(false);
-      return;
-    }
+    setCoopAllocations((current) =>
+      Object.fromEntries(
+        loanParticipants.map((member) => [
+          member.userId,
+          current[member.userId] ?? "0",
+        ]),
+      ),
+    );
+  }, [arboId, applicantName, members, verifierId]);
+
+  useEffect(() => {
+    const memberIds = new Set(members.map((member) => member.userId));
     const unsub = onSnapshot(
-      query(collection(db, "grants"), where("type", "==", "loan")),
+      collection(db, "loans"),
       (snap) => {
-        const list: any[] = [];
-        snap.forEach((d) => {
-          const data = d.data();
-          if (memberIds.includes(data.beneficiaryId))
-            list.push({ id: d.id, ...data });
-        });
+        const list = snap.docs
+          .map(
+            (d) =>
+              ({
+                ...d.data(),
+                id: String(d.data().id || d.id),
+                firestoreId: d.id,
+              }) as Loan,
+          )
+          .filter(
+            (loan) =>
+              loan.cooperativeId === arboId || memberIds.has(loan.applicantId),
+          );
         setLoans(list);
         setLoading(false);
       },
     );
-    return () => unsub();
-  }, [members]);
+    const unsubPayments = onSnapshot(collection(db, "loanPayments"), (snap) => {
+      setPayments(
+        snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as LoanPayment,
+        ),
+      );
+    });
+    return () => {
+      unsub();
+      unsubPayments();
+    };
+  }, [arboId, members]);
 
   if (loading)
     return (
@@ -686,26 +772,322 @@ const LoansTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
         Loading loans...
       </div>
     );
-  if (loans.length === 0) {
-    return (
-      <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
-        <FileText size={32} className="text-slate-300 mx-auto mb-3" />
-        <h3 className="text-sm font-bold text-slate-500 mb-1">No Loans</h3>
-        <p className="text-xs text-slate-400">
-          Outstanding loans for your members will be tracked here.
-        </p>
-      </div>
-    );
-  }
-
   const totalOutstanding = loans.reduce(
-    (s: number, l: any) => s + (l.remainingBalance ?? l.amount ?? 0),
+    (s, loan) => s + (loan.remainingBalance || 0),
     0,
   );
+  const pendingPayments = payments.filter(
+    (payment) =>
+      loans.some((loan) => loan.id === payment.loanId) &&
+      payment.applicantId !== verifierId &&
+      (payment.status === "disputed" ||
+        ((payment.status === "paid" || payment.status === "partial") &&
+          !payment.verifiedAt)),
+  );
+  const totalCollected = loans.reduce((sum, loan) => sum + loan.totalPaid, 0);
+  const memberName = (applicantId: string) =>
+    applicantId === verifierId
+      ? "You (ARBO Head)"
+      : members.find((member) => member.userId === applicantId)?.userName ||
+        "Member";
+  const currentAllocationTotal = loanParticipants.reduce(
+    (sum, member) => sum + Number(coopAllocations[member.userId] || 0),
+    0,
+  );
+  const openCooperativeLoanModal = () => {
+    setResubmittingCoopLoan(null);
+    setCoopPurpose("");
+    setCoopAmount("");
+    setCoopTerm("12");
+    setCoopFrequency("monthly");
+    setCoopResubmissionNotes("");
+    setCoopError(null);
+    setShowCoopLoanModal(true);
+  };
+  const openCooperativeResubmission = (loan: Loan) => {
+    setResubmittingCoopLoan(loan);
+    setCoopPurpose(loan.purpose);
+    setCoopAmount(String(loan.principalAmount));
+    setCoopTerm(String(loan.termMonths));
+    setCoopFrequency(loan.paymentFrequency);
+    setCoopResubmissionNotes("");
+    setCoopAllocations(
+      Object.fromEntries(
+        loanParticipants.map((participant) => [
+          participant.userId,
+          String(
+            loan.memberAllocations?.find(
+              (allocation) => allocation.memberId === participant.userId,
+            )?.amount || 0,
+          ),
+        ]),
+      ),
+    );
+    setCoopError(null);
+    setShowCoopLoanModal(true);
+  };
+  const closeCooperativeLoanModal = () => {
+    setShowCoopLoanModal(false);
+    setResubmittingCoopLoan(null);
+    setCoopResubmissionNotes("");
+  };
+  const handleCooperativeLoanSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    const amount = Number(coopAmount);
+    const term = Number(coopTerm);
+    const memberAllocations: CooperativeLoanAllocation[] = loanParticipants.map(
+      (member) => ({
+        memberId: member.userId,
+        memberName: member.userName,
+        amount: Number(coopAllocations[member.userId] || 0),
+      }),
+    );
+    const allocatedTotal = memberAllocations.reduce(
+      (sum, allocation) => sum + allocation.amount,
+      0,
+    );
+    if (
+      !coopPurpose.trim() ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !Number.isInteger(term) ||
+      term < 1
+    ) {
+      setCoopError("Enter a purpose, valid amount, and term.");
+      return;
+    }
+    if (resubmittingCoopLoan && !coopResubmissionNotes.trim()) {
+      setCoopError("Add notes explaining how you addressed the rejection.");
+      return;
+    }
+    if (
+      memberAllocations.some(
+        (allocation) =>
+          !Number.isFinite(allocation.amount) || allocation.amount < 0,
+      )
+    ) {
+      setCoopError("Each member allocation must be zero or greater.");
+      return;
+    }
+    if (Math.abs(allocatedTotal - amount) > 0.01) {
+      setCoopError(
+        `Member allocations must equal ${amount.toLocaleString(
+          "en-PH",
+          { minimumFractionDigits: 2 },
+        )}. Current total: ${allocatedTotal.toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+        })}.`,
+      );
+      return;
+    }
+    setCoopSubmitting(true);
+    setCoopError(null);
+    try {
+      const history = checkLoanHistory(
+        loans.filter((loan) => loan.applicantId === verifierId),
+      );
+      const now = new Date().toISOString();
+      if (resubmittingCoopLoan) {
+        await updateDoc(
+          doc(
+            db,
+            "loans",
+            resubmittingCoopLoan.firestoreId || resubmittingCoopLoan.id,
+          ),
+          {
+            principalAmount: amount,
+            termMonths: term,
+            paymentFrequency: coopFrequency,
+            purpose: coopPurpose.trim(),
+            memberAllocations,
+            totalInterest: 0,
+            totalRepayment: amount,
+            installmentAmount: 0,
+            numberOfPayments: 0,
+            status: resubmittingCoopLoan.hasHistoryFlag
+              ? "needs_review"
+              : "pending_approval",
+            rejectedReason: null,
+            previousRejectedReason:
+              resubmittingCoopLoan.rejectedReason ||
+              resubmittingCoopLoan.previousRejectedReason ||
+              null,
+            resubmissionNotes: coopResubmissionNotes.trim(),
+            resubmittedAt: now,
+            notes: coopResubmissionNotes.trim(),
+            updatedAt: now,
+          },
+        );
+      } else {
+        await addDoc(collection(db, "loans"), {
+          id: generateLoanId(),
+          applicantId: verifierId,
+          applicantName,
+          applicantType: "cooperative",
+          cooperativeId: arboId,
+          cooperativeName: arboName,
+          memberAllocations,
+          principalAmount: amount,
+          interestRate: 0,
+          termMonths: term,
+          paymentFrequency: coopFrequency,
+          purpose: coopPurpose.trim(),
+          totalInterest: 0,
+          totalRepayment: amount,
+          installmentAmount: 0,
+          numberOfPayments: 0,
+          status: history.hasDefaults ? "needs_review" : "pending_approval",
+          accountStatus: "open",
+          totalPaid: 0,
+          remainingBalance: 0,
+          defaultedPayments: history.totalDefaultedPayments,
+          onTimePayments: 0,
+          nextPaymentDue: "",
+          hasHistoryFlag: history.hasDefaults,
+          historyNotes: history.historyNotes,
+          notes: "",
+          createdAt: now,
+          createdBy: verifierId,
+          updatedAt: now,
+        });
+      }
+      await broadcastNotification(
+        "admin",
+        "loan_submitted",
+        resubmittingCoopLoan
+          ? "Cooperative loan resubmitted"
+          : "New cooperative loan application",
+        resubmittingCoopLoan
+          ? `${applicantName} resubmitted cooperative loan ${resubmittingCoopLoan.id}. Notes: ${coopResubmissionNotes.trim()}`
+          : `${applicantName} submitted a ${amount.toLocaleString(
+              "en-PH",
+            )} cooperative loan for ${arboName}.`,
+      );
+      closeCooperativeLoanModal();
+      setCoopPurpose("");
+      setCoopAmount("");
+      setCoopTerm("12");
+      setCoopAllocations(
+        Object.fromEntries(
+          loanParticipants.map((member) => [member.userId, "0"]),
+        ),
+      );
+    } catch (error) {
+      console.error("Failed to submit cooperative loan:", error);
+      setCoopError("Unable to submit the cooperative loan application.");
+    } finally {
+      setCoopSubmitting(false);
+    }
+  };
+  const verifyPayment = async (payment: LoanPayment, disputed: boolean) => {
+    if (payment.applicantId === verifierId) return;
+    const loan = loans.find((item) => item.id === payment.loanId);
+    if (!loan) return;
+    const fullyPaid = payment.amountPaid >= payment.amountDue;
+    const verifiedAt = new Date().toISOString();
+    await updateDoc(doc(db, "loanPayments", payment.id), {
+      status: disputed ? "disputed" : fullyPaid ? "paid" : "partial",
+      verifiedBy: verifierId,
+      verifiedByName: "ARBO Head",
+      verifiedAt,
+    });
+    if (!disputed && payment.isEarlyRepayment && fullyPaid) {
+      await Promise.all(
+        payments
+          .filter(
+            (candidate) =>
+              candidate.loanId === loan.id &&
+              candidate.id !== payment.id &&
+              candidate.memberId === payment.memberId &&
+              ["upcoming", "overdue", "disputed"].includes(candidate.status),
+          )
+          .map((candidate) =>
+            updateDoc(doc(db, "loanPayments", candidate.id), {
+              status: "paid",
+              amountPaid: candidate.amountDue,
+              paidAt: verifiedAt,
+              verifiedBy: verifierId,
+              verifiedByName: "ARBO Head",
+              verifiedAt,
+            }),
+          ),
+      );
+    }
+    if (!disputed && !payment.verifiedAt) {
+      const nextPayment = payments
+        .filter(
+          (candidate) =>
+            candidate.loanId === loan.id &&
+            candidate.id !== payment.id &&
+            candidate.status === "upcoming" &&
+            (!payment.isEarlyRepayment ||
+              !fullyPaid ||
+              candidate.memberId !== payment.memberId),
+        )
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+      const remainingBalance = Math.max(
+        0,
+        (loan.remainingBalance || loan.totalRepayment) - payment.amountPaid,
+      );
+      await updateDoc(doc(db, "loans", loan.firestoreId || loan.id), {
+        totalPaid: (loan.totalPaid || 0) + payment.amountPaid,
+        remainingBalance,
+        onTimePayments:
+          (loan.onTimePayments || 0) +
+          (fullyPaid && Date.now() <= new Date(payment.dueDate).getTime()
+            ? 1
+            : 0),
+        nextPaymentDue: fullyPaid ? nextPayment?.dueDate || "" : payment.dueDate,
+        ...(remainingBalance <= 0
+          ? { status: "completed", accountStatus: "closed" }
+          : {}),
+        updatedAt: verifiedAt,
+      });
+    }
+  };
+
+  const disputePayment = async () => {
+    if (!paymentForDispute || !disputeNotes.trim()) {
+      setDisputeError("Add notes explaining why this payment is disputed.");
+      return;
+    }
+    try {
+      const disputedAt = new Date().toISOString();
+      await updateDoc(doc(db, "loanPayments", paymentForDispute.id), {
+        status: "disputed",
+        disputeReason: disputeNotes.trim(),
+        lastDisputeReason: disputeNotes.trim(),
+        disputedAt,
+        disputedBy: verifierId,
+        verifiedBy: null,
+        verifiedByName: null,
+        verifiedAt: null,
+      });
+      setPaymentForDispute(null);
+      setDisputeNotes("");
+      setDisputeError(null);
+    } catch (error) {
+      console.error("Failed to dispute member payment:", error);
+      setDisputeError("Unable to dispute this payment.");
+    }
+  };
 
   return (
     <div>
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-slate-500">
+          Cooperative loan portfolio and member payment receipts.
+        </p>
+        <button
+          onClick={openCooperativeLoanModal}
+          className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white"
+        >
+          Apply Cooperative Loan
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-4 mb-4 lg:grid-cols-4">
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
           <p className="text-lg font-extrabold text-indigo-900">
             {loans.length}
@@ -720,9 +1102,15 @@ const LoansTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
           <p className="text-lg font-extrabold text-emerald-700">
-            {loans.filter((l: any) => l.status === "active").length}
+            {loans.filter((loan) => loan.status === "active").length}
           </p>
           <p className="text-[9px] text-slate-400 uppercase">Active</p>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+          <p className="text-lg font-extrabold text-emerald-700">
+            ₱{totalCollected.toLocaleString()}
+          </p>
+          <p className="text-[9px] text-slate-400 uppercase">Collected</p>
         </div>
       </div>
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -733,57 +1121,498 @@ const LoansTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
               <th className="px-4 py-3 text-left">Amount</th>
               <th className="px-4 py-3 text-left">Interest</th>
               <th className="px-4 py-3 text-left">Remaining</th>
+              <th className="px-4 py-3 text-left">Next Due</th>
               <th className="px-4 py-3 text-left">Status</th>
+              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loans.map((l: any) => (
-              <tr key={l.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 text-xs font-bold text-slate-700">
-                  {l.beneficiaryName}
-                </td>
-                <td className="px-4 py-3 text-xs text-slate-800">
-                  ₱{l.amount?.toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-xs text-slate-600">
-                  {l.interestRate ?? 0}% · {l.loanTermMonths ?? 12}mo
-                </td>
-                <td className="px-4 py-3 text-xs font-bold text-indigo-700">
-                  ₱{(l.remainingBalance ?? l.amount)?.toLocaleString()}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      l.status === "active"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-blue-100 text-blue-700"
-                    }`}
-                  >
-                    {l.status}
-                  </span>
+            {loans.map((loan) => {
+              const loanPayments = payments
+                .filter((payment) => payment.loanId === loan.id)
+                .sort((a, b) => a.paymentNumber - b.paymentNumber);
+              const expanded = expandedLoanId === loan.id;
+              return (
+                <React.Fragment key={loan.id}>
+                  <tr className="hover:bg-slate-50">
+                    <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                      {memberName(loan.applicantId)}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-800">
+                      ₱{loan.principalAmount.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      {loan.interestRate}% · {loan.termMonths}mo
+                    </td>
+                    <td className="px-4 py-3 text-xs font-bold text-indigo-700">
+                      ₱{loan.remainingBalance.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {loan.nextPaymentDue
+                        ? new Date(loan.nextPaymentDue).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${LOAN_STATUS_CONFIG[loan.status].bgColor}`}>
+                        {LOAN_STATUS_CONFIG[loan.status].label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button onClick={() => setExpandedLoanId(expanded ? null : loan.id)} className="text-slate-500">
+                        {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+                    </td>
+                  </tr>
+                  {expanded && (
+                    <tr>
+                      <td colSpan={7} className="bg-slate-50 p-3">
+                        {loan.status === "rejected" && (
+                          <div className="mb-3 flex flex-wrap items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                            <div>
+                              <p className="font-bold">Cooperative loan rejected</p>
+                              <p className="mt-1">
+                                {loan.rejectedReason ||
+                                  "The administrator requested changes before this loan can be reviewed again."}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => openCooperativeResubmission(loan)}
+                              className="rounded-lg bg-red-700 px-3 py-2 text-[10px] font-bold text-white hover:bg-red-800"
+                            >
+                              Resubmit with Notes
+                            </button>
+                          </div>
+                        )}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead className="text-[9px] uppercase text-slate-400"><tr><th className="p-2 text-left">#</th><th className="p-2 text-left">Due</th><th className="p-2 text-left">Amount</th><th className="p-2 text-left">Status</th><th className="p-2"></th></tr></thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {loanPayments.map((payment) => (
+                                <tr key={payment.id}><td className="p-2">{payment.paymentNumber}</td><td className="p-2">{new Date(payment.dueDate).toLocaleDateString()}</td><td className="p-2">₱{payment.amountDue.toLocaleString()}</td><td className="p-2">{payment.status}{payment.applicantId === verifierId && !payment.verifiedAt && <span className="ml-2 text-[10px] font-semibold text-slate-500">Admin verification required</span>}</td><td className="p-2 text-right">{payment.receiptImage && <button onClick={() => setReceiptPreview(payment.receiptImage || null)} className="text-emerald-700 underline">View receipt</button>}</td></tr>
+                              ))}
+                              {loanPayments.length === 0 && <tr><td colSpan={5} className="p-3 text-center text-slate-400">No payment history.</td></tr>}
+                            </tbody>
+                          </table>
+                        </div>
+                        {loan.memberAllocations &&
+                          loan.memberAllocations.length > 0 && (
+                            <div className="mt-3 rounded-lg border border-indigo-100 bg-white p-3">
+                              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+                                Member allocation
+                              </p>
+                              <div className="grid gap-1 sm:grid-cols-2">
+                                {loan.memberAllocations.map((allocation) => (
+                                  <div
+                                    key={allocation.memberId}
+                                    className="flex items-center justify-between gap-3 text-xs text-slate-600"
+                                  >
+                                    <span>{allocation.memberName}</span>
+                                    <span
+                                      className={`font-bold ${
+                                        allocation.amount === 0
+                                          ? "text-slate-400"
+                                          : "text-slate-800"
+                                      }`}
+                                    >
+                                      ₱{allocation.amount.toLocaleString(
+                                        "en-PH",
+                                        { minimumFractionDigits: 2 },
+                                      )}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+            {loans.length === 0 && (
+              <tr>
+                <td colSpan={7} className="p-8 text-center text-slate-400">
+                  No cooperative loans yet.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
+      {pendingPayments.length > 0 && (
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 p-4">
+            <h3 className="text-sm font-bold text-slate-800">
+              Payment Verification
+            </h3>
+            <p className="text-xs text-slate-500">
+              Review member-submitted receipts before confirming them. Your own
+              ARBO Head payments are excluded and require admin verification.
+            </p>
+          </div>
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-[9px] uppercase text-slate-400">
+              <tr>
+                <th className="p-3 text-left">Member</th>
+                <th className="p-3 text-left">Loan</th>
+                <th className="p-3 text-left">Amount</th>
+                <th className="p-3 text-left">Status</th>
+                <th className="p-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {pendingPayments.map((payment) => {
+                const paymentStatus = PAYMENT_STATUS_CONFIG[payment.status];
+                return (
+                  <tr key={payment.id}>
+                    <td className="p-3">{memberName(payment.applicantId)}</td>
+                    <td className="p-3 font-bold">{payment.loanId}</td>
+                    <td className="p-3">₱{payment.amountPaid.toLocaleString()}</td>
+                    <td className="p-3">
+                      <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${paymentStatus.bgColor} ${paymentStatus.color}`}>
+                        {paymentStatus.label}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      {payment.receiptImage && (
+                        <button onClick={() => setReceiptPreview(payment.receiptImage || null)} className="mr-2 text-emerald-700 underline">Receipt</button>
+                      )}
+                      {payment.applicantId === verifierId ? (
+                        <span className="text-[10px] font-semibold text-slate-500">
+                          Admin verification required
+                        </span>
+                      ) : (
+                        <>
+                          {(payment.status === "paid" ||
+                            payment.status === "partial") && (
+                            <button onClick={() => void verifyPayment(payment, false)} className="mr-1 rounded bg-emerald-700 px-2 py-1 text-[10px] font-bold text-white">Verify</button>
+                          )}
+                          <button onClick={() => { setPaymentForDispute(payment); setDisputeNotes(""); setDisputeError(null); }} className="rounded bg-orange-600 px-2 py-1 text-[10px] font-bold text-white">Dispute</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {paymentForDispute && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 p-4" onClick={() => setPaymentForDispute(null)}>
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-800">Dispute payment</h3>
+              <button onClick={() => setPaymentForDispute(null)} className="text-slate-400"><XCircle size={18} /></button>
+            </div>
+            <p className="mb-3 text-xs text-slate-500">Explain what the member needs to correct, such as a blurred or incorrect receipt.</p>
+            <textarea value={disputeNotes} onChange={(event) => setDisputeNotes(event.target.value)} rows={4} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Dispute reason" />
+            {disputeError && <p className="mt-2 rounded-lg bg-red-50 p-2 text-xs font-semibold text-red-700">{disputeError}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setPaymentForDispute(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600">Cancel</button>
+              <button onClick={() => void disputePayment()} className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white">Save dispute</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {receiptPreview && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 p-4" onClick={() => setReceiptPreview(null)}>
+          <div className="max-h-[90vh] max-w-3xl rounded-xl bg-white p-3" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-2 flex justify-end"><button onClick={() => setReceiptPreview(null)}><XCircle size={18} /></button></div>
+            <img src={receiptPreview} alt="Payment receipt" className="max-h-[80vh] max-w-full object-contain" />
+          </div>
+        </div>
+      )}
+      {showCoopLoanModal && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 p-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-800">
+                  Cooperative Financing
+                </p>
+                <h2 className="font-bold text-slate-900">
+                  {resubmittingCoopLoan
+                    ? "Resubmit Cooperative Loan"
+                    : "Apply for a Cooperative Loan"}
+                </h2>
+              </div>
+              <button
+                onClick={closeCooperativeLoanModal}
+                className="text-slate-400"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+            <form
+              onSubmit={handleCooperativeLoanSubmit}
+              className="space-y-4 p-5"
+            >
+              <p className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800">
+                {resubmittingCoopLoan
+                  ? "Update this cooperative application and explain how you addressed the administrator's rejection."
+                  : `This application is for ${arboName}. It is separate from your personal loans in the My Loans sidebar.`}
+              </p>
+              {resubmittingCoopLoan?.rejectedReason && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                  <p className="font-bold">Administrator's rejection reason</p>
+                  <p className="mt-1">{resubmittingCoopLoan.rejectedReason}</p>
+                </div>
+              )}
+              <label className="block text-xs font-bold text-slate-600">
+                Purpose
+                <textarea
+                  value={coopPurpose}
+                  onChange={(event) => setCoopPurpose(event.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="What will the cooperative loan support?"
+                />
+              </label>
+              {resubmittingCoopLoan && (
+                <label className="block text-xs font-bold text-slate-600">
+                  Resubmission notes (required)
+                  <textarea
+                    value={coopResubmissionNotes}
+                    onChange={(event) =>
+                      setCoopResubmissionNotes(event.target.value)
+                    }
+                    rows={3}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    placeholder="Explain what you changed or corrected."
+                  />
+                </label>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-bold text-slate-600">
+                  Amount
+                  <input
+                    type="number"
+                    min="1"
+                    value={coopAmount}
+                    onChange={(event) => setCoopAmount(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="block text-xs font-bold text-slate-600">
+                  Term (months)
+                  <input
+                    type="number"
+                    min="1"
+                    value={coopTerm}
+                    onChange={(event) => setCoopTerm(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-slate-700">
+                      Split amount by member
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Enter each member's share. Use 0 when a member does not
+                      want a portion. The total must equal the loan amount.
+                    </p>
+                  </div>
+                  <span
+                    className={`whitespace-nowrap text-xs font-bold ${
+                      Math.abs(currentAllocationTotal - Number(coopAmount || 0)) <=
+                      0.01
+                        ? "text-emerald-700"
+                        : "text-orange-700"
+                    }`}
+                  >
+                    ₱{currentAllocationTotal.toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {loanParticipants.map((member) => (
+                    <label
+                      key={member.userId}
+                      className="grid grid-cols-[1fr_9rem] items-center gap-3 text-xs font-semibold text-slate-600"
+                    >
+                      <span>{member.userName}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={coopAllocations[member.userId] ?? "0"}
+                        onChange={(event) =>
+                          setCoopAllocations((current) => ({
+                            ...current,
+                            [member.userId]: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-right text-sm font-normal text-slate-900"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label className="block text-xs font-bold text-slate-600">
+                Payment frequency
+                <select
+                  value={coopFrequency}
+                  onChange={(event) =>
+                    setCoopFrequency(event.target.value as PaymentFrequency)
+                  }
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  {Object.entries(FREQUENCY_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {coopError && (
+                <p className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">
+                  {coopError}
+                </p>
+              )}
+              <button
+                disabled={coopSubmitting}
+                className="w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {coopSubmitting
+                  ? "Submitting..."
+                  : resubmittingCoopLoan
+                    ? "Resubmit Cooperative Loan"
+                    : "Submit Cooperative Loan"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const NotesTab: React.FC<{ arboId: string }> = ({ arboId: _arboId }) => {
-  // Placeholder — will be populated in Phase 6
+const NotesTab: React.FC<{ arboId: string }> = ({ arboId }) => {
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    return onSnapshot(
+      query(collection(db, "loans"), where("cooperativeId", "==", arboId)),
+      (snap) => {
+        setLoans(
+          snap.docs
+            .map(
+              (item) =>
+                ({
+                  ...item.data(),
+                  id: String(item.data().id || item.id),
+                  firestoreId: item.id,
+                }) as Loan,
+            )
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+        );
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Failed to load cooperative loan notes:", error);
+        setLoading(false);
+      },
+    );
+  }, [arboId]);
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-xs text-slate-400">
+        Loading cooperative loan notes...
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
-      <AlertCircle size={32} className="text-slate-300 mx-auto mb-3" />
-      <h3 className="text-sm font-bold text-slate-500 mb-1">
-        Admin Communications
-      </h3>
-      <p className="text-xs text-slate-400">
-        Messages and notes from the DAR Administrator addressed to your ARBO
-        will appear here. Use this to stay updated on requirements and
-        announcements.
-      </p>
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <h2 className="font-bold text-amber-900">Cooperative loan notes</h2>
+        <p className="mt-1 text-xs text-amber-800">
+          Administrator approval notes, rejection reasons, and resubmission
+          notes for this ARBO's cooperative loans are collected here.
+        </p>
+      </div>
+      {loans.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+          <AlertCircle size={32} className="mx-auto mb-3 text-slate-300" />
+          <h3 className="text-sm font-bold text-slate-500">
+            No cooperative loan notes yet
+          </h3>
+          <p className="mt-1 text-xs text-slate-400">
+            Notes will appear after an administrator reviews a cooperative
+            loan.
+          </p>
+        </div>
+      ) : (
+        loans.map((loan) => {
+          const status = LOAN_STATUS_CONFIG[loan.status];
+          return (
+            <article
+              key={loan.id}
+              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-indigo-800">{loan.id}</p>
+                  <h3 className="mt-1 font-bold text-slate-900">
+                    {loan.purpose}
+                  </h3>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Updated {new Date(loan.updatedAt).toLocaleString()}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${status.bgColor} ${status.color}`}
+                >
+                  {status.label}
+                </span>
+              </div>
+              <div className="mt-4 space-y-3 text-xs">
+                {loan.rejectedReason && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-800">
+                    <p className="font-bold">Administrator rejection reason</p>
+                    <p className="mt-1">{loan.rejectedReason}</p>
+                  </div>
+                )}
+                {loan.previousRejectedReason &&
+                  loan.previousRejectedReason !== loan.rejectedReason && (
+                    <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-orange-800">
+                      <p className="font-bold">Previous rejection reason</p>
+                      <p className="mt-1">{loan.previousRejectedReason}</p>
+                    </div>
+                  )}
+                {loan.resubmissionNotes && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-800">
+                    <p className="font-bold">Resubmission notes</p>
+                    <p className="mt-1">{loan.resubmissionNotes}</p>
+                  </div>
+                )}
+                {loan.notes && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
+                    <p className="font-bold">Administrator notes</p>
+                    <p className="mt-1">{loan.notes}</p>
+                  </div>
+                )}
+                {!loan.rejectedReason &&
+                  !loan.previousRejectedReason &&
+                  !loan.resubmissionNotes &&
+                  !loan.notes && (
+                    <p className="text-slate-400">
+                      No written notes have been added for this loan.
+                    </p>
+                  )}
+              </div>
+            </article>
+          );
+        })
+      )}
     </div>
   );
 };

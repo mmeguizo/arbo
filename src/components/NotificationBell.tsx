@@ -37,6 +37,23 @@ export const NotificationBell: React.FC = () => {
     const role = profile?.role;
     // Admin: routes to verified (Admin Stage) tab
     if (role === "admin") {
+      if (n.type === "password_reset_requested") {
+        return "/accounts";
+      }
+      if (
+        n.type === "loan_submitted" ||
+        n.type === "loan_approved" ||
+        n.type === "loan_rejected" ||
+        n.type === "payment_received" ||
+        n.type === "payment_verified" ||
+        n.type === "payment_disputed" ||
+        n.type === "loan_completed" ||
+        n.type === "loan_defaulted" ||
+        n.type === "payment_due_soon" ||
+        n.type === "payment_overdue"
+      ) {
+        return "/loan-management";
+      }
       return "/review-apps?tab=verified";
     }
     // Staff: routes to under_review (Staff Stage) tab

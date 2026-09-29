@@ -4,7 +4,7 @@
 >
 > **Status key**: `[ ]` todo | `[~]` in-progress | `[x]` done
 >
-> **Last updated**: 2026-06-16 (MAJOR FEATURE EXPANSION)
+> **Last updated**: 2026-09-29 (loan workflow and documentation audit)
 
 ---
 
@@ -151,3 +151,34 @@
 - [ ] Existing surveyor Firestore docs — `surveyorName`, `surveyorId` fields in legacy data
 - [ ] Password reset landing page (existing known issue)
 - [ ] Mobile responsiveness QA (existing known issue)
+
+---
+
+## Phase 15: Loan Management System (2026-06-16)
+
+- [x] 15.1 `src/types/loan.ts` — Loan, payment, ledger types, flat-interest schedule generation, and loan-history checks
+- [x] 15.2 `LoanApplication.tsx` — ARB/ARBO Head loan applications, schedules, payment receipts, and income/expense ledger
+- [x] 15.3 `LoanManagement.tsx` — Admin approval/rejection, schedule generation, payment verification/disputes, defaults, reminders, term editing, archives, and CSV reporting
+- [x] 15.4 `ArboDashboard.tsx` — Cooperative loan portfolio, collection totals, expandable payment history, receipt preview, and payment-receipt monitoring
+- [x] 15.5 `App.tsx`, `Sidebar.tsx`, and `NotificationContext.tsx` — Loan routes, navigation, and notification types
+- [x] 15.6 Firestore collections — `/loans`, `/loanPayments`, and `/loanIncomeExpenses` are created automatically by the first successful write
+- [x] 15.7 Documentation — ERD, project context, and session handover updated for the loan module and Supabase upload URLs
+- [x] 15.8 Verification — `npm run build` passes
+- [x] 15.9 Loan lifecycle — Completed loans close their account and notify the applicant; defaulted loans close the account and notify the applicant
+- [x] 15.10 Profitability detail — Per-ARB income, expenses, net profit, and active balance are sorted and displayed
+- [x] 15.11 Payment dispute workflow — Admin and ARBO Head dispute notes are required and visible to applicants
+- [x] 15.12 Payment resubmission — Applicants can upload a corrected receipt with resubmission notes
+- [x] 15.13 Loan form styling — Applicant loan, payment, and ledger inputs use shared Tailwind styling
+- [x] 15.14 Documentation audit — ERD, project context, and session handover reflect the implemented loan module
+- [x] 15.15 Cooperative loan splitting — ARBO Heads can assign unequal member shares, including zero allocations, with exact-total validation
+- [x] 15.16 ARBO Head participation — Include the cooperative head in participant counts and allocation choices
+- [x] 15.17 Rejected loan resubmission — Applicants can correct and resubmit the same rejected loan with required notes
+- [x] 15.18 Allocation review styling — Display cooperative allocations as a compact review table
+- [x] 15.19 Cooperative resubmission surface — Resubmit rejected cooperative loans from the ARBO Dashboard while keeping My Loans individual-only for resubmission
+- [x] 15.20 Per-loan ledger scope — Filter and create income/expense entries for a selected individual or cooperative loan
+- [x] 15.21 Cooperative member loan visibility — Include ARBO Head-initiated cooperative loans and shared schedules for linked cooperative members
+- [x] 15.22 Cooperative payment ownership — Show all cooperative payment history while restricting payment actions to the assigned member
+- [x] 15.23 Early cooperative repayment — Allow a member to submit a full early repayment for their own allocated share
+- [x] 15.24 Personal loan isolation — Keep ARBO Head-initiated cooperative history separate from the signed-in member's individual My Loans list
+- [x] 15.25 Approval form reset — Clear approval notes and interest rate between loans; require the administrator to enter the rate
+- [x] 15.26 Loan notification visibility — Remove notification index dependency, route loan events correctly, notify cooperative audiences, and surface ARBO loan notes

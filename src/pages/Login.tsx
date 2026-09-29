@@ -5,6 +5,7 @@ import {
   sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth } from "../firebase/config";
+import { broadcastNotification } from "../contexts/NotificationContext";
 import {
   LogIn,
   Lock,
@@ -34,10 +35,18 @@ export const Login: React.FC = () => {
     setError(null);
     try {
       await sendPasswordResetEmail(auth, email.trim());
+      await broadcastNotification(
+        "admin",
+        "password_reset_requested",
+        "Password Reset Requested",
+        `${email.trim()} requested a password reset. The Firebase reset email was sent; please follow up if the user needs assistance.`,
+      );
       setResetSent(true);
     } catch (err: any) {
       if (err.code === "auth/user-not-found") {
         setError("No account found with this email address.");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Please enter a valid email address.");
       } else {
         setError("Failed to send reset email. Please try again.");
       }
