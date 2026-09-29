@@ -24,6 +24,7 @@ import {
   ChevronUp,
   DollarSign,
   Landmark,
+  Loader2,
   Plus,
   TrendingDown,
   TrendingUp,
@@ -63,6 +64,11 @@ const canManageLoanPayment = (
   loan?.applicantType === "cooperative"
     ? payment.memberId === uid
     : payment.applicantId === uid;
+
+const isPaymentPendingVerification = (payment: LoanPayment) =>
+  (payment.status === "paid" || payment.status === "partial") &&
+  !payment.verifiedAt &&
+  (payment.amountPaid > 0 || Boolean(payment.paidAt));
 
 const calculateOwnedBalance = (
   loan: Loan,
@@ -998,6 +1004,8 @@ export const LoanApplication: React.FC = () => {
                                       payment,
                                       profile.uid,
                                     );
+                                  const pendingVerification =
+                                    isPaymentPendingVerification(payment);
                                   return (
                                     <tr key={payment.id}>
                                       <td className="p-2 font-bold">{payment.paymentNumber}</td>
@@ -1009,13 +1017,22 @@ export const LoanApplication: React.FC = () => {
                                       <td className="p-2">{formatDate(payment.dueDate)}</td>
                                       <td className="p-2 font-bold">{money(payment.amountDue)}</td>
                                       <td className="p-2">
-                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${paymentStatus.bgColor} ${paymentStatus.color}`}>
-                                          {paymentStatus.label}
+                                        <span
+                                          className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
+                                            pendingVerification
+                                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                                              : `${paymentStatus.bgColor} ${paymentStatus.color}`
+                                          }`}
+                                        >
+                                          {pendingVerification
+                                            ? "Pending verification"
+                                            : paymentStatus.label}
                                         </span>
                                       </td>
                                       <td className="p-2 text-right">
                                         {loan.status === "active" &&
                                           canManagePayment &&
+                                          !pendingVerification &&
                                           (payment.status === "upcoming" ||
                                             payment.status === "disputed") && (
                                           <button
@@ -1026,6 +1043,13 @@ export const LoanApplication: React.FC = () => {
                                               ? "Resubmit Payment"
                                               : "Make Payment"}
                                           </button>
+                                        )}
+                                        {canManagePayment &&
+                                        loan.status === "active" &&
+                                        pendingVerification && (
+                                          <span className="text-[10px] font-semibold text-amber-700">
+                                            Awaiting admin verification
+                                          </span>
                                         )}
                                         {loan.applicantType === "cooperative" &&
                                           !canManagePayment && (
@@ -1141,6 +1165,8 @@ export const LoanApplication: React.FC = () => {
                                       );
                                     const paymentStatus =
                                       PAYMENT_STATUS_CONFIG[payment.status];
+                                    const pendingVerification =
+                                      isPaymentPendingVerification(payment);
                                     return (
                                       <tr key={payment.id}>
                                         <td className="p-2">
@@ -1159,18 +1185,25 @@ export const LoanApplication: React.FC = () => {
                                         </td>
                                         <td className="p-2">
                                           <span
-                                            className={`rounded-full border px-2 py-1 text-[10px] font-bold ${paymentStatus.bgColor} ${paymentStatus.color}`}
+                                            className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
+                                              pendingVerification
+                                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                                : `${paymentStatus.bgColor} ${paymentStatus.color}`
+                                            }`}
                                           >
                                             {payment.isEarlyRepayment
                                               ? payment.verifiedAt
                                                 ? "Early repayment verified"
                                                 : "Early repayment pending review"
+                                              : pendingVerification
+                                                ? "Pending verification"
                                               : paymentStatus.label}
                                           </span>
                                         </td>
                                         <td className="p-2 text-right">
                                           {canManagePayment &&
                                             loan.status === "active" &&
+                                            !pendingVerification &&
                                             (payment.status === "upcoming" ||
                                               payment.status === "disputed") && (
                                               <button
@@ -1183,6 +1216,13 @@ export const LoanApplication: React.FC = () => {
                                                   ? "Resubmit Payment"
                                                   : "Make Payment"}
                                               </button>
+                                            )}
+                                          {canManagePayment &&
+                                            loan.status === "active" &&
+                                            pendingVerification && (
+                                            <span className="text-[10px] font-semibold text-amber-700">
+                                              Awaiting admin verification
+                                            </span>
                                             )}
                                           {!canManagePayment && (
                                             <span className="text-[10px] text-slate-400">
@@ -1493,7 +1533,17 @@ const LedgerSection: React.FC<{
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => <label className="block text-xs font-bold text-slate-600">{label}<span className="mt-1 block">{children}</span></label>;
 const ErrorText: React.FC<{ text: string }> = ({ text }) => <p className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">{text}</p>;
-const SubmitButton: React.FC<{ loading: boolean; label: string }> = ({ loading, label }) => <button disabled={loading} className="w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50">{loading ? "Saving..." : label}</button>;
+const SubmitButton: React.FC<{ loading: boolean; label: string }> = ({ loading, label }) => (
+  <button
+    type="submit"
+    disabled={loading}
+    aria-busy={loading}
+    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    {loading && <Loader2 size={16} className="animate-spin" />}
+    {loading ? "Submitting..." : label}
+  </button>
+);
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
   <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4">
     <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl">
