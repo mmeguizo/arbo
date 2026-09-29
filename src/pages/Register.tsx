@@ -5,6 +5,7 @@ import { doc, setDoc } from "firebase/firestore";
 
 import { useAuth } from "../contexts/AuthContext";
 import { broadcastNotification } from "../contexts/NotificationContext";
+import { writeAuditLog } from "../utils/audit";
 import { auth, db } from "../firebase/config";
 import { uploadFile, getDocumentPath } from "../utils/storage";
 import {
@@ -316,6 +317,19 @@ export const Register: React.FC = () => {
         adminApprovedAt: null,
         notes: "",
         documents: uploadedDocuments,
+      });
+      await writeAuditLog({
+        actor: {
+          uid: authUser.uid,
+          name: name.trim(),
+          role: "arb",
+        },
+        action: "account_registered",
+        entityType: "application",
+        entityId: appRefId,
+        applicationId: appRefId,
+        newStatus: "under_review",
+        notes: `${name.trim()} registered an ARB account and submitted application ${appRefId}.`,
       });
 
       // Notify all staff members of the new application

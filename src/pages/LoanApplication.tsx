@@ -16,6 +16,7 @@ import { db } from "../firebase/config";
 import { broadcastNotification } from "../contexts/NotificationContext";
 import { formatDate } from "../utils/formatters";
 import { getDocumentPath, uploadFile } from "../utils/storage";
+import { writeAuditLog } from "../utils/audit";
 import {
   AlertCircle,
   Calendar,
@@ -475,6 +476,17 @@ export const LoanApplication: React.FC = () => {
             updatedAt: now,
           },
         );
+        await writeAuditLog({
+          actor: { uid: user.uid, name: profile.name, role: profile.role },
+          action: "loan_resubmitted",
+          entityType: "loan",
+          entityId: resubmittingLoan.id,
+          oldStatus: "rejected",
+          newStatus: resubmittingLoan.hasHistoryFlag
+            ? "needs_review"
+            : "pending_approval",
+          notes: `${profile.name} resubmitted loan ${resubmittingLoan.id}. Notes: ${formNotes.trim()}`,
+        });
       } else {
         const loanId = generateLoanId();
         await addDoc(collection(db, "loans"), {
@@ -506,6 +518,14 @@ export const LoanApplication: React.FC = () => {
           createdAt: now,
           createdBy: user.uid,
           updatedAt: now,
+        });
+        await writeAuditLog({
+          actor: { uid: user.uid, name: profile.name, role: profile.role },
+          action: "loan_submitted",
+          entityType: "loan",
+          entityId: loanId,
+          newStatus: history.hasDefaults ? "needs_review" : "pending_approval",
+          notes: `${profile.name} submitted a ${money(amount)} individual loan application.`,
         });
       }
       await broadcastNotification(
@@ -574,6 +594,19 @@ export const LoanApplication: React.FC = () => {
         resubmissionNotes:
           paymentForEntry.status === "disputed" ? payNotes.trim() : null,
       });
+      await writeAuditLog({
+        actor: { uid: user.uid, name: profile.name, role: profile.role },
+        action:
+          paymentForEntry.status === "disputed"
+            ? "loan_payment_resubmitted"
+            : "loan_payment_submitted",
+        entityType: "loan_payment",
+        entityId: paymentForEntry.id,
+        applicationId: paymentForLoan,
+        oldStatus: paymentForEntry.status,
+        newStatus: amount >= paymentForEntry.amountDue ? "paid" : "partial",
+        notes: `${profile.name} submitted a ${money(amount)} payment for loan ${paymentForLoan}.`,
+      });
       await broadcastNotification(
         "admin",
         "payment_received",
@@ -636,7 +669,7 @@ export const LoanApplication: React.FC = () => {
           payment.loanId === earlyRepaymentLoan.id &&
           canManageLoanPayment(earlyRepaymentLoan, payment, profile.uid),
       );
-      await addDoc(collection(db, "loanPayments"), {
+      const earlyRepayment = await addDoc(collection(db, "loanPayments"), {
         loanId: earlyRepaymentLoan.id,
         applicantId: profile.uid,
         memberId: profile.uid,
@@ -655,6 +688,15 @@ export const LoanApplication: React.FC = () => {
         receiptImage,
         receiptNotes: earlyRepaymentNotes.trim(),
         createdAt: new Date().toISOString(),
+      });
+      await writeAuditLog({
+        actor: { uid: user.uid, name: profile.name, role: profile.role },
+        action: "early_repayment_submitted",
+        entityType: "loan_payment",
+        entityId: earlyRepayment.id,
+        applicationId: earlyRepaymentLoan.id,
+        newStatus: "paid",
+        notes: `${profile.name} submitted an early repayment of ${money(amount)} for ${earlyRepaymentLoan.id}.`,
       });
       await broadcastNotification(
         "admin",

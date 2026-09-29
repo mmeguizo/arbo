@@ -250,6 +250,10 @@ payments.
   composite Firestore index requirement. Admin loan events route to
   `/loan-management`; cooperative approval/rejection events are delivered to
   the ARBO Head and allocated members.
+- Government audit actions are written to the append-only `/auditLogs`
+  collection through `src/utils/audit.ts`. The audit screen supports legacy
+  application records and newer loan, payment, cooperative, and account
+  administration records.
 - `/loanIncomeExpenses`: optional applicant income and expense ledger entries.
   Entries may include `loanId`; the applicant ledger can filter and manage
   entries for one individual loan, one cooperative loan, all loans, or

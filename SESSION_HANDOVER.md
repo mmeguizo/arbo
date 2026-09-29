@@ -376,7 +376,12 @@ Barangay loading tries the PSGC GitLab API first. If it fails (404, network erro
 
 ### Audit Logs Are Immutable
 
-Every action writes to `/auditLogs/{autoId}`. Logs are never deleted or updated — they are append-only for government compliance. Staff/encoder users see only their own actions; admin sees all.
+Government-relevant workflow actions write to `/auditLogs/{autoId}` through
+`src/utils/audit.ts`. Logs are never deleted or updated — they are append-only
+for compliance. The tracked actions include application decisions and document
+changes, land survey/title assignment changes, loan submissions and decisions,
+payment verification/disputes, cooperative reviews, and account
+administration. Staff/encoder users see only their own actions; admin sees all.
 
 ---
 

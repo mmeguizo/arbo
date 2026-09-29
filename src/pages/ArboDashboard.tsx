@@ -11,6 +11,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+import { writeAuditLog } from "../utils/audit";
 import { broadcastNotification } from "../contexts/NotificationContext";
 import {
   FREQUENCY_LABELS,
@@ -889,6 +890,8 @@ const LoansTab: React.FC<{
         loans.filter((loan) => loan.applicantId === verifierId),
       );
       const now = new Date().toISOString();
+      const cooperativeLoanId =
+        resubmittingCoopLoan?.id || generateLoanId();
       if (resubmittingCoopLoan) {
         await updateDoc(
           doc(
@@ -922,7 +925,7 @@ const LoansTab: React.FC<{
         );
       } else {
         await addDoc(collection(db, "loans"), {
-          id: generateLoanId(),
+          id: cooperativeLoanId,
           applicantId: verifierId,
           applicantName,
           applicantType: "cooperative",
@@ -953,6 +956,19 @@ const LoansTab: React.FC<{
           updatedAt: now,
         });
       }
+      await writeAuditLog({
+        actor: { uid: verifierId, name: applicantName, role: "arbo_head" },
+        action: resubmittingCoopLoan
+          ? "cooperative_loan_resubmitted"
+          : "cooperative_loan_submitted",
+        entityType: "loan",
+        entityId: cooperativeLoanId,
+        oldStatus: resubmittingCoopLoan?.status || null,
+        newStatus: history.hasDefaults ? "needs_review" : "pending_approval",
+        notes: resubmittingCoopLoan
+          ? `${applicantName} resubmitted cooperative loan ${cooperativeLoanId}. Notes: ${coopResubmissionNotes.trim()}`
+          : `${applicantName} submitted cooperative loan ${cooperativeLoanId} for ${arboName}.`,
+      });
       await broadcastNotification(
         "admin",
         "loan_submitted",
@@ -992,6 +1008,18 @@ const LoansTab: React.FC<{
       verifiedBy: verifierId,
       verifiedByName: "ARBO Head",
       verifiedAt,
+    });
+    await writeAuditLog({
+      actor: { uid: verifierId, name: applicantName, role: "arbo_head" },
+      action: disputed
+        ? "cooperative_payment_disputed"
+        : "cooperative_payment_verified",
+      entityType: "loan_payment",
+      entityId: payment.id,
+      applicationId: loan.id,
+      oldStatus: payment.status,
+      newStatus: disputed ? "disputed" : fullyPaid ? "paid" : "partial",
+      notes: `ARBO Head reviewed payment ${payment.paymentNumber} for loan ${loan.id}.`,
     });
     if (!disputed && payment.isEarlyRepayment && fullyPaid) {
       await Promise.all(
@@ -1064,6 +1092,16 @@ const LoansTab: React.FC<{
         verifiedBy: null,
         verifiedByName: null,
         verifiedAt: null,
+      });
+      await writeAuditLog({
+        actor: { uid: verifierId, name: applicantName, role: "arbo_head" },
+        action: "cooperative_payment_disputed",
+        entityType: "loan_payment",
+        entityId: paymentForDispute.id,
+        applicationId: paymentForDispute.loanId,
+        oldStatus: paymentForDispute.status,
+        newStatus: "disputed",
+        notes: `ARBO Head disputed payment ${paymentForDispute.paymentNumber}: ${disputeNotes.trim()}`,
       });
       setPaymentForDispute(null);
       setDisputeNotes("");

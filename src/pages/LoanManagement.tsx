@@ -13,6 +13,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+import { writeAuditLog } from "../utils/audit";
 import { exportToCSV, formatDate } from "../utils/formatters";
 import {
   AlertTriangle,
@@ -436,6 +437,15 @@ export const LoanManagement: React.FC = () => {
         });
       });
       await batch.commit();
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_approved",
+        entityType: "loan",
+        entityId: selectedLoan.id,
+        oldStatus: selectedLoan.status,
+        newStatus: "active",
+        notes: `Admin ${profile.name} approved loan ${selectedLoan.id} at ${rate}% interest.${approvalNotes.trim() ? ` Notes: ${approvalNotes.trim()}` : ""}`,
+      });
       try {
         await notifyApplicant(
           selectedLoan,
@@ -469,6 +479,15 @@ export const LoanManagement: React.FC = () => {
         rejectedReason: rejectionReason.trim(),
         previousRejectedReason: rejectionReason.trim(),
         updatedAt: new Date().toISOString(),
+      });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_rejected",
+        entityType: "loan",
+        entityId: selectedLoan.id,
+        oldStatus: selectedLoan.status,
+        newStatus: "rejected",
+        notes: `Admin ${profile.name} rejected loan ${selectedLoan.id}: ${rejectionReason.trim()}`,
       });
       await notifyApplicant(
         selectedLoan,
@@ -565,6 +584,16 @@ export const LoanManagement: React.FC = () => {
           );
         }
       }
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_payment_verified",
+        entityType: "loan_payment",
+        entityId: payment.id,
+        applicationId: loan.id,
+        oldStatus: payment.status,
+        newStatus: fullyPaid ? "paid" : "partial",
+        notes: `Admin ${profile.name} verified payment ${payment.paymentNumber} for loan ${loan.id}.`,
+      });
       await notifyApplicant(
         loan,
         "payment_verified",
@@ -600,6 +629,16 @@ export const LoanManagement: React.FC = () => {
         verifiedByName: null,
         verifiedAt: null,
       });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_payment_disputed",
+        entityType: "loan_payment",
+        entityId: payment.id,
+        applicationId: loan.id,
+        oldStatus: payment.status,
+        newStatus: "disputed",
+        notes: `Admin ${profile.name} disputed payment ${payment.paymentNumber} for loan ${loan.id}: ${disputeNotes.trim()}`,
+      });
       await notifyApplicant(
         loan,
         "payment_disputed",
@@ -631,6 +670,15 @@ export const LoanManagement: React.FC = () => {
         accountStatus: "closed",
         updatedAt: new Date().toISOString(),
       });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_defaulted",
+        entityType: "loan",
+        entityId: loan.id,
+        oldStatus: loan.status,
+        newStatus: "defaulted",
+        notes: `Admin ${profile.name} marked loan ${loan.id} as defaulted.`,
+      });
       await notifyApplicant(
         loan,
         "loan_defaulted",
@@ -644,12 +692,22 @@ export const LoanManagement: React.FC = () => {
   };
 
   const completeLoan = async (loan: Loan) => {
+    if (!profile) return;
     try {
       await updateDoc(loanRef(loan), {
         status: "completed",
         accountStatus: "closed",
         nextPaymentDue: "",
         updatedAt: new Date().toISOString(),
+      });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_completed",
+        entityType: "loan",
+        entityId: loan.id,
+        oldStatus: loan.status,
+        newStatus: "completed",
+        notes: `Admin ${profile.name} closed loan ${loan.id}.`,
       });
       await notifyApplicant(
         loan,
@@ -665,7 +723,7 @@ export const LoanManagement: React.FC = () => {
 
   const editLoanTerms = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedLoan) return;
+    if (!selectedLoan || !profile) return;
     const rate = Number(editRate);
     const term = Number(editTerm);
     if (!Number.isFinite(rate) || rate < 0 || !Number.isInteger(term) || term < 1) {
@@ -779,6 +837,15 @@ export const LoanManagement: React.FC = () => {
         ),
         nextPaymentDue,
         updatedAt: new Date().toISOString(),
+      });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_terms_updated",
+        entityType: "loan",
+        entityId: selectedLoan.id,
+        oldStatus: selectedLoan.status,
+        newStatus: selectedLoan.status,
+        notes: `Admin ${profile.name} changed loan ${selectedLoan.id} to ${rate}% interest over ${term} months.`,
       });
       setShowEditTerms(false);
       setSelectedLoan(null);

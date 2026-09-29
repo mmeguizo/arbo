@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Sidebar } from "../components/Sidebar";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
   formatDateTime,
@@ -26,13 +26,16 @@ import {
 
 interface AuditLog {
   id: string;
-  applicationId: string;
+  applicationId: string | null;
+  entityType?: string;
+  entityId?: string | null;
+  actorId?: string | null;
   timestamp: string;
   actor: string;
   actorRole: string;
   action: string;
-  oldStatus: string | null;
-  newStatus: string;
+  oldStatus?: string | null;
+  newStatus?: string | null;
   notes: string;
 }
 
@@ -46,14 +49,14 @@ const roleBadge = (role: string) => {
   return colors[role] || "bg-slate-100 text-slate-600";
 };
 
-const statusColor = (status: string) => {
+const statusColor = (status: string | null | undefined) => {
   const colors: Record<string, string> = {
     under_review: "text-orange-600",
     verified: "text-emerald-600",
     awarded: "text-blue-600",
     disputed: "text-rose-600",
   };
-  return colors[status] || "text-slate-600";
+  return   colors[status || ""] || "text-slate-600";
 };
 
 export const AuditLogs: React.FC = () => {
@@ -83,15 +86,34 @@ export const AuditLogs: React.FC = () => {
   const isAdmin = profile?.role === "admin";
 
   useEffect(() => {
-    const q = query(collection(db, "auditLogs"), orderBy("timestamp", "desc"));
-
     const unsub = onSnapshot(
-      q,
+      collection(db, "auditLogs"),
       (snap) => {
         const list: AuditLog[] = [];
         snap.forEach((d) => {
-          list.push({ id: d.id, ...d.data() } as AuditLog);
+          const data = d.data();
+          const timestampValue = data.timestamp;
+          const timestamp =
+            typeof timestampValue === "string"
+              ? timestampValue
+              : timestampValue?.toDate?.()?.toISOString?.() ||
+                new Date(0).toISOString();
+          list.push({
+            id: d.id,
+            applicationId: data.applicationId || null,
+            entityType: data.entityType || "application",
+            entityId: data.entityId || data.applicationId || null,
+            actorId: data.actorId || null,
+            timestamp,
+            actor: data.actor || "Unknown",
+            actorRole: data.actorRole || "unknown",
+            action: data.action || "unknown",
+            oldStatus: data.oldStatus || null,
+            newStatus: data.newStatus || null,
+            notes: data.notes || "",
+          });
         });
+        list.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
         setLogs(list);
         setLoading(false);
       },
@@ -107,7 +129,11 @@ export const AuditLogs: React.FC = () => {
   // Scope: admin sees all, non-admin sees ONLY their own actions (by name)
   const scopedLogs = isAdmin
     ? logs
-    : logs.filter((l) => l.actor === profile?.name);
+    : logs.filter(
+        (l) =>
+          (profile?.uid && l.actorId === profile.uid) ||
+          (!l.actorId && l.actor === profile?.name),
+      );
 
   // Apply all filters
   const filteredLogs = useMemo(() => {
@@ -120,7 +146,7 @@ export const AuditLogs: React.FC = () => {
     // App ID search
     if (searchAppId.trim())
       result = result.filter((l) =>
-        l.applicationId
+        (l.applicationId || l.entityId || "")
           .toLowerCase()
           .includes(searchAppId.trim().toLowerCase()),
       );
@@ -132,8 +158,8 @@ export const AuditLogs: React.FC = () => {
         (l) =>
           l.notes.toLowerCase().includes(kw) ||
           l.action.toLowerCase().includes(kw) ||
-          l.newStatus.toLowerCase().includes(kw) ||
-          (l.oldStatus && l.oldStatus.toLowerCase().includes(kw)),
+          (l.newStatus || "").toLowerCase().includes(kw) ||
+          (l.oldStatus || "").toLowerCase().includes(kw),
       );
     }
 
@@ -177,7 +203,7 @@ export const AuditLogs: React.FC = () => {
   const totalPages = Math.ceil(filteredLogs.length / PAGE);
   const paginatedLogs = filteredLogs.slice(page * PAGE, (page + 1) * PAGE);
 
-  const roles = ["all", "staff", "admin", "encoder"];
+  const roles = ["all", "staff", "admin", "encoder", "arb", "arbo_head"];
 
   // Sorting handler
   const handleSort = (field: SortField) => {
@@ -537,7 +563,7 @@ export const AuditLogs: React.FC = () => {
                           </td>
                           <td className="py-3 px-6">
                             <span className="text-xs font-mono font-bold text-slate-600">
-                              {log.applicationId}
+                              {log.applicationId || log.entityId || "—"}
                             </span>
                           </td>
                           <td className="py-3 px-6">
@@ -556,7 +582,10 @@ export const AuditLogs: React.FC = () => {
                               <span
                                 className={`font-bold ${statusColor(log.newStatus)}`}
                               >
-                                {log.newStatus.replace(/_/g, " ")}
+                                {(log.newStatus || "recorded").replace(
+                                  /_/g,
+                                  " ",
+                                )}
                               </span>
                             </div>
                           </td>
