@@ -180,6 +180,16 @@ export const Sidebar: React.FC = () => {
 
   const navItems = getNavItems();
 
+  const setOnlyOpenGroup = (groupLabel: string, isOpen: boolean) => {
+    setOpenGroups(
+      Object.fromEntries(
+        navItems
+          .filter(isNavGroup)
+          .map((group) => [group.label, group.label === groupLabel && isOpen]),
+      ),
+    );
+  };
+
   return (
     <>
       {/* Mobile Top Header */}
@@ -243,26 +253,23 @@ export const Sidebar: React.FC = () => {
               const isGroupActive = entry.children.some((child) =>
                 isActive(child.path),
               );
-              const isGroupOpen = openGroups[entry.label] !== false;
+              const isGroupOpen = openGroups[entry.label] ?? isGroupActive;
               const GroupIcon = entry.icon;
               return (
                 <div key={entry.label} className="mb-1">
                   <button
-                    onClick={() =>
-                      setOpenGroups((previous) => ({
-                        ...previous,
-                        [entry.label]: !isGroupOpen,
-                      }))
-                    }
+                    onClick={() => setOnlyOpenGroup(entry.label, !isGroupOpen)}
                     className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors ${
                       isGroupActive
                         ? "text-amber-300"
                         : "text-emerald-300/70 hover:text-emerald-100"
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
                       <GroupIcon size={14} />
-                      <span>{entry.label}</span>
+                      <span className="whitespace-nowrap text-[11px]">
+                        {entry.label}
+                      </span>
                     </div>
                     <ChevronDown
                       size={12}
@@ -280,7 +287,10 @@ export const Sidebar: React.FC = () => {
                           <Link
                             key={child.path}
                             to={child.path}
-                            onClick={() => setIsOpen(false)}
+                            onClick={() => {
+                              setIsOpen(false);
+                              setOnlyOpenGroup(entry.label, true);
+                            }}
                             className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                               childActive
                                 ? "bg-emerald-700 font-semibold text-white"
