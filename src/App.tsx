@@ -26,6 +26,8 @@ import { CooperativeManagement } from "./pages/CooperativeManagement";
 import { ArboDashboard } from "./pages/ArboDashboard";
 import { TrainingManagement } from "./pages/TrainingManagement";
 import { MyTrainings } from "./pages/MyTrainings";
+import { LoanApplication } from "./pages/LoanApplication";
+import { LoanManagement } from "./pages/LoanManagement";
 
 // A small gatekeeper component that routes authenticated users to their natural landing page
 const AuthRedirect: React.FC = () => {
@@ -197,6 +199,24 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["admin", "staff", "encoder"]}>
                   <AuditLogs />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/my-loans"
+              element={
+                <ProtectedRoute allowedRoles={["arb", "arbo_head"]}>
+                  <LoanApplication />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/loan-management"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <LoanManagement />
                 </ProtectedRoute>
               }
             />

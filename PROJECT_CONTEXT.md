@@ -1,7 +1,7 @@
 # ARBO Mobile Support Web App — Project Context
 
 > **For the next AI agent**: Read this file AND `SESSION_HANDOVER.md` before making any changes.
-> Last updated: June 8, 2026 — See `SESSION_HANDOVER.md` for the complete handover including workflow changes, known issues, and everything built so far.
+> Last updated: September 29, 2026 — See `SESSION_HANDOVER.md` for the complete handover including workflow changes, loan behavior, and known limitations.
 
 ---
 
@@ -19,13 +19,13 @@ The primary use case is digitizing the CLOA (Certificate of Land Ownership Award
 
 | Layer              | Technology                                                          |
 | ------------------ | ------------------------------------------------------------------- |
-| Frontend Framework | React 18 + Vite                                                     |
-| Language           | TypeScript 5.5+ (strict mode)                                       |
+| Frontend Framework | React 19 + Vite                                                     |
+| Language           | TypeScript 6 (strict mode)                                          |
 | Styling            | Tailwind CSS v4 + PostCSS                                           |
 | Routing            | React Router DOM v7                                                 |
 | Backend / Auth     | Firebase v12 (Web SDK)                                              |
 | Database           | Firebase Cloud Firestore (NoSQL)                                    |
-| File Storage       | Firebase Storage (Base64 encoded inline in Firestore for documents) |
+| File Storage       | Supabase Storage (`uploads` bucket); Firestore stores public URLs   |
 | Icons              | Lucide React                                                        |
 | Build Tool         | Vite v8                                                             |
 
@@ -54,16 +54,15 @@ Custom brand colors are defined in `tailwind.config.js`:
 
 ## 3. Firebase Project Details
 
-- **Project ID**: `arbo-f5b2a`
-- **Auth Domain**: `arbo-f5b2a.firebaseapp.com`
-- **Storage Bucket**: `arbo-f5b2a.firebasestorage.app`
+- **Project ID**: `arbo-90356`
+- **Auth Domain**: `arbo-90356.firebaseapp.com`
 - **Config file**: `src/firebase/config.ts`
 
 ### Firebase Services Used
 
 - **Firebase Authentication** — Email/Password only
 - **Cloud Firestore** — Primary database
-- **Firebase Storage** — Available but documents are stored as Base64 strings inside Firestore to avoid extra Storage setup
+- **Supabase Storage** — Browser uploads use the shared `src/utils/storage.ts` helper and the public `uploads` bucket; Firebase Storage is not initialized
 
 ---
 
@@ -86,7 +85,10 @@ Stores user profiles for all roles.
   "age": "number",
   "contact": "string",
   "barangay": "string",
-  "role": "arb | staff | surveyor | admin",
+  "role": "arb | staff | encoder | admin | arbo_head",
+  "municipality": "string",
+  "province": "string",
+  "arboId": "string (optional cooperative ID)",
   "createdAt": "ISO string"
 }
 ```
@@ -111,8 +113,8 @@ One application per ARB farmer. Linked by their Auth UID.
     "brgyCert": "base64 string or null",
     "picture": "base64 string or null"
   },
-  "surveyorEncodedAt": "ISO string (optional)",
-  "surveyorName": "string (optional)",
+  "encoderEncodedAt": "ISO string (optional)",
+  "encoderName": "string (optional)",
   "titleNumber": "string (optional)"
 }
 ```
@@ -131,7 +133,7 @@ Surveyor-encoded land boundary records.
   "areaHectares": "number",
   "geoLat": "string",
   "geoLng": "string",
-  "encodedBy": "string (surveyorId)",
+  "encodedBy": "string (encoderId)",
   "encodedAt": "ISO string"
 }
 ```
@@ -144,7 +146,8 @@ Surveyor-encoded land boundary records.
 | ---------- | ---------------------- | ------------------------------- |
 | `arb`      | Farmer / Beneficiary   | My Application page only        |
 | `staff`    | DAR Municipal Staff    | Dashboard, Review Applications  |
-| `surveyor` | DAR Surveyor           | Dashboard, Land Titles          |
+| `encoder` | DAR Encoder             | Dashboard, Land Titles          |
+| `arbo_head` | ARBO cooperative head | ARBO dashboard, personal loans, member payment review |
 | `admin`    | District Administrator | All pages including Admin Users |
 
 Routes are protected by `ProtectedRoute.tsx` which reads the user's role from Firestore after login.
@@ -156,7 +159,9 @@ Routes are protected by `ProtectedRoute.tsx` which reads the user's role from Fi
 ```
 src/
 ├── firebase/
-│   └── config.ts              ← Firebase init, exports: auth, db, storage, firebaseConfig
+│   └── config.ts              ← Firebase init, exports: auth, db, firebaseConfig
+├── supabase/
+│   └── config.ts              ← Supabase client and storage bucket configuration
 ├── contexts/
 │   └── AuthContext.tsx         ← useAuth() hook, UserProfile type, UserRole type
 ├── components/
@@ -166,16 +171,94 @@ src/
 ├── pages/
 │   ├── Login.tsx               ← Email/Password login
 │   ├── Register.tsx            ← Multi-step ARB farmer registration with doc uploads
-│   ├── Dashboard.tsx           ← Admin/Staff/Surveyor stats overview
+│   ├── Dashboard.tsx           ← Admin/Staff/Encoder stats overview
 │   ├── MyApplication.tsx       ← ARB farmer view of their application
 │   ├── ReviewApps.tsx          ← Staff/Admin dual-pane review board
-│   ├── LandTitles.tsx          ← Surveyor GPS coordinate entry form
+│   ├── LandTitles.tsx          ← Encoder GPS coordinate entry form
 │   ├── Search.tsx              ← Search TCT/lot numbers/beneficiary names
-│   └── AdminUsers.tsx          ← Admin creates Staff/Surveyor accounts
+│   ├── AdminUsers.tsx          ← Admin creates and edits system users
+│   ├── LoanApplication.tsx     ← Applicant loans, payments, and income/expense ledger
+│   ├── LoanManagement.tsx      ← Admin approvals, verification, disputes, defaults, and reports
+│   └── ArboDashboard.tsx       ← ARBO portfolio and member payment review
 ├── App.tsx                     ← Route definitions and role-based redirects
 ├── main.tsx                    ← React root entry point
 └── index.css                   ← Tailwind v4 directives + global styles
 ```
+
+## 7. Loan Management Module
+
+The loan module is available at `/my-loans` for `arb` and `arbo_head` users and
+at `/loan-management` for administrators. It uses these Firestore collections,
+which are created automatically on the first successful write:
+
+- `/loans` — applications, flat-interest terms, balances, status, and history flags
+- `/loanPayments` — generated schedules, submitted receipts, and verification state
+- `/loanIncomeExpenses` — optional income and expense ledger entries
+
+Receipts are uploaded through Supabase Storage and the resulting public URL is
+stored in Firestore. The admin flow approves or rejects applications, generates
+payment schedules, verifies or disputes receipts, marks defaulted loans, and
+exports a profitability report. ARBO Heads can review loans tied to their
+cooperative and verify member payment receipts, but cannot verify their own
+payments.
+
+### Loan lifecycle
+
+1. ARBs and ARBO Heads submit individual applications from `/my-loans`.
+   Cooperative members also see approved, pending, or rejected cooperative
+   loans for the cooperative IDs linked through `/cooperativeMembers`, even
+   though the ARBO Head is the loan applicant.
+   The personal loan list itself contains only the signed-in user's
+   `individual` loans; cooperative history is rendered in its own section.
+2. An ARBO Head submits a cooperative application from the ARBO Dashboard modal.
+3. Admin approval updates the loan and generated schedule in a Firestore batch.
+4. The applicant uploads a Supabase receipt for an upcoming payment.
+5. Admin, or an eligible ARBO Head for a member payment, verifies the receipt.
+   Only verification updates `totalPaid` and `remainingBalance`.
+6. A reviewer can dispute a receipt only with a written reason. The applicant
+   sees the reason, uploads a corrected receipt, and adds resubmission notes.
+7. The corrected payment returns to review; a disputed payment never reduces the
+   loan balance until verification succeeds.
+
+### Loan collections
+
+- `/loans`: logical `LOAN-XXXXXX` data, terms, balances, status, and
+  `applicantType` (`individual` or `cooperative`). Cooperative loans also store
+  `memberAllocations`, an array of `{ memberId, memberName, amount }` records
+  including the ARBO Head. The allocation total must equal the cooperative
+  principal; any participant may have an explicit zero allocation.
+- Rejected individual loans are edited and resubmitted from `/my-loans`.
+  Rejected cooperative loans are edited and resubmitted from the ARBO Dashboard
+  cooperative-loan modal. Both flows update the same `/loans` record with
+  required `resubmissionNotes`; the status returns to `pending_approval` or
+  `needs_review` without creating a duplicate loan.
+- `/loanPayments`: generated schedule entries, Supabase receipt URLs, reviewer
+  fields, dispute notes, resubmission audit fields, and optional cooperative
+  `memberId`/`memberName` ownership fields.
+- Cooperative payment schedules are shared by all members who can see the
+  cooperative loan; the applicant's own payments and the visible cooperative
+  loan payments are loaded together in the member loan view.
+- Cooperative members can view every payment in the shared history, but only
+  payment records whose `memberId` matches their account can be submitted or
+  resubmitted. Legacy cooperative schedules are split into member-owned
+  records by the admin loan-management view.
+- A cooperative member with an outstanding owned share can submit a full early
+  repayment with a receipt. Admin or eligible ARBO Head verification closes
+  that member's remaining schedule rows without closing the cooperative loan
+  for other members.
+- Loan notifications are stored in `/notifications` and listened to without a
+  composite Firestore index requirement. Admin loan events route to
+  `/loan-management`; cooperative approval/rejection events are delivered to
+  the ARBO Head and allocated members.
+- `/loanIncomeExpenses`: optional applicant income and expense ledger entries.
+  Entries may include `loanId`; the applicant ledger can filter and manage
+  entries for one individual loan, one cooperative loan, all loans, or
+  unassigned/general records. Loan-payment expenses must reference a payment
+  belonging to the selected loan.
+
+Loan objects have two IDs: the human-readable logical `id` and the Firestore
+auto-document ID mapped to `Loan.firestoreId`. Every loan update must use
+`loan.firestoreId || loan.id`.
 
 ---
 
@@ -197,9 +280,12 @@ await deleteApp(secondaryApp);
 
 The "Profitability Tracking" dashboard was removed from active scope. It appears as a greyed-out "Coming Soon" link in the Sidebar to signal future scope to the client.
 
-### C. Base64 Document Storage
+### C. Storage split
 
-ARB farmers upload 4 documents (Cedula, Birth Cert, Barangay Cert, Photo). These are converted to Base64 strings and stored directly inside the Firestore application document. This avoids needing Firebase Storage rules and simplifies setup.
+Legacy registration/application documents remain Base64 data in Firestore. Loan
+receipts and shared uploads use Supabase Storage through
+`src/utils/storage.ts`; only the returned public URL is stored in Firestore.
+Firebase Storage is not initialized by the application.
 
 ### D. Real-time Live Stats
 
@@ -208,7 +294,7 @@ Dashboard stats now reflect live Firestore counts for total farmers, land titles
 ### E. CLOA Approval Pipeline (4-Stage — Updated June 8)
 
 1. **Under Review** (Staff Stage): ARB registers and uploads documents. Staff may dispute with remarks.
-2. **Forwarded to Surveyor** (Surveyor Stage): Staff verifies docs, forwards to surveyor to encode land boundaries.
+2. **Forwarded to Encoder** (Encoder Stage): Staff verifies docs, forwards to an encoder to encode land boundaries.
 3. **Verified** (Admin Stage): Surveyor encodes land title, admin verifies and awards.
 4. **Awarded**: Final state. CLOA title visible to ARB in My Application.
 
@@ -218,11 +304,12 @@ Dashboard stats now reflect live Firestore counts for total farmers, land titles
 
 ## 8. Current Build Status
 
-- **Last successful build**: June 2, 2026
+- **Last successful build**: September 29, 2026
 - **Build command**: `npm run build`
 - **Build output**: `dist/` folder
 - **TypeScript errors**: 0
-- **Build time**: ~4 seconds
+- **Known warnings**: large Vite bundle and ineffective dynamic imports; neither
+  currently blocks the build.
 
 ---
 
@@ -272,18 +359,18 @@ service cloud.firestore {
       allow write: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
     }
 
-    // Applications: ARB writes their own, staff/admin/surveyor can read all
+    // Applications: ARB writes their own, staff/admin/encoder can read all
     match /applications/{appId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid == appId;
       allow update: if request.auth != null;
     }
 
-    // Land Titles: surveyors and admins write, all authenticated users read
+    // Land Titles: encoders and admins write, all authenticated users read
     match /landTitles/{titleId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'surveyor' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'encoder' ||
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
       );
     }

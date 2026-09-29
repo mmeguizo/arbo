@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Building2,
   GraduationCap,
+  Landmark,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -45,6 +46,7 @@ export const Sidebar: React.FC = () => {
         { label: "My CLOA Record", path: "/my-application", icon: FileText },
         { label: "My Grants", path: "/my-grants", icon: TrendingUp },
         { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
+        { label: "My Loans", path: "/my-loans", icon: Landmark },
       ];
     }
 
@@ -55,6 +57,7 @@ export const Sidebar: React.FC = () => {
         { label: "My CLOA Record", path: "/my-application", icon: FileText },
         { label: "My Grants", path: "/my-grants", icon: TrendingUp },
         { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
+        { label: "My Loans", path: "/my-loans", icon: Landmark },
       ];
     }
 
@@ -84,6 +87,7 @@ export const Sidebar: React.FC = () => {
         { label: "Search Registry", path: "/search", icon: Search },
         { label: "Analytics & Reports", path: "/reports", icon: TrendingUp },
         { label: "Grant Management", path: "/grants", icon: TrendingUp },
+        { label: "Loan Management", path: "/loan-management", icon: Landmark },
         { label: "Trainings", path: "/trainings", icon: GraduationCap },
         { label: "ARBOs", path: "/cooperatives", icon: Building2 },
         { label: "System Users", path: "/accounts", icon: Settings },

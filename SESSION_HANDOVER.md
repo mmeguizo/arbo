@@ -1,7 +1,7 @@
 # ARBO Support Web App — Session Handover
 
 > **To the next AI agent**: Read this file first. It contains everything you need to continue this project without asking the user basic questions.
-> Last updated: June 8, 2026
+> Last updated: September 29, 2026
 
 ---
 
@@ -12,8 +12,8 @@
 | App Name      | ARBO (Agrarian Reform Beneficiaries Organization) Support Web App                                    |
 | Client        | Department of Agrarian Reform (DAR), Negros Occidental, Philippines                                  |
 | Purpose       | Digitize CLOA (Certificate of Land Ownership Award) application & approval pipeline                  |
-| Primary Users | ARB farmers (beneficiaries), DAR Staff, DAR Surveyors, District Admin                                |
-| Domain        | [https://arbo-f5b2a.web.app](https://arbo-f5b2a.web.app) (deployed via Vercel — check `vercel.json`) |
+| Primary Users | ARB farmers, DAR Staff, DAR Encoders, ARBO Heads, District Admin                                |
+| Domain        | Deployment URL is environment-specific; check `vercel.json` and the hosting dashboard |
 
 ---
 
@@ -25,9 +25,9 @@
 | Language     | TypeScript                | 6.0.2 (strict)  |
 | Styling      | Tailwind CSS v4 + PostCSS | 4.3.0 / 8.5.15  |
 | Routing      | react-router-dom          | 7.16.0          |
-| Backend/Auth | Firebase JS SDK           | 12.14.0         |
+| Backend/Auth | Firebase JS SDK           | 12.x             |
 | Database     | Cloud Firestore           | (via SDK)       |
-| Icons        | lucide-react              | 1.17.0          |
+| Icons        | lucide-react              | current package version |
 | Maps         | leaflet + react-leaflet   | 1.9.4 / 5.0.0   |
 | Build        | Vite                      | 8.0.12          |
 
@@ -43,7 +43,7 @@ npm run preview   # Preview production build locally
 
 ## 3. Firebase Project
 
-- **Project ID**: `arbo-f5b2a`
+- **Project ID**: `arbo-90356`
 - **Auth**: Email/Password only
 - **Config file**: `src/firebase/config.ts`
 - **API Key**: `AIzaSyBBhHBTlYX50-jRvgO9hYPgNCgOfWrOVuk` (public — Firebase keys are client-safe)
@@ -67,8 +67,10 @@ npm run preview   # Preview production build locally
   "barangay": "string",
   "municipality": "string",
   "province": "string",
-  "role": "arb | staff | surveyor | admin",
-  "createdAt": "ISO string"
+  "role": "arb | staff | encoder | admin | arbo_head",
+  "createdAt": "ISO string",
+  "isActive": "boolean (optional)",
+  "arboId": "string (optional cooperative ID)"
 }
 ```
 
@@ -92,13 +94,12 @@ npm run preview   # Preview production build locally
   "staffReviewedAt": "ISO string | null",
   "approvedByAdmin": "string | null",
   "adminApprovedAt": "ISO string | null",
-  "surveyorEncodedAt": "ISO string | null",
-  "surveyorName": "string | null",
+  "encoderEncodedAt": "ISO string | null",
+  "encoderName": "string | null",
   "titleNumber": "string | null",
   "documents": {
-    "cedula": "base64 string | null",
     "birthCert": "base64 string | null",
-    "brgyCert": "base64 string | null",
+    "governmentId": "base64 string | null",
     "picture": "base64 string | null"
   }
 }
@@ -119,9 +120,9 @@ npm run preview   # Preview production build locally
   "municipality": "string",
   "geoLat": "string",
   "geoLng": "string",
-  "surveyorId": "string",
+  "encoderId": "string",
   "encodedAt": "ISO string",
-  "landPhotos": "base64 string[] (optional, surveyor photos of the land parcel)"
+  "landPhotos": "base64 string[] (optional, encoder photos of the land parcel)"
 }
 ```
 
@@ -132,7 +133,7 @@ npm run preview   # Preview production build locally
   "applicationId": "string",
   "timestamp": "ISO string",
   "actor": "string (name)",
-  "actorRole": "staff | admin | surveyor | arb",
+  "actorRole": "staff | admin | encoder | arb",
   "action": "status_change | status_reverted | document_updated | document_removed | land_encoded | arb_response",
   "oldStatus": "string | null",
   "newStatus": "string",
@@ -169,10 +170,93 @@ ARB creates account / application
 | Status | Meaning |
 |---|---|
 | `under_review` | Staff stage — awaiting staff evaluation |
-| `forwarded_to_surveyor` | Staff approved — surveyor to encode land |
+| `forwarded_to_surveyor` | Staff approved — encoder to encode land |
 | `verified` | Surveyor encoded — admin to approve |
 | `awarded` | Admin approved — complete |
 | `disputed` | Any stage — rejected with remarks, ARB can respond |
+
+---
+
+## 6. Current Loan Module
+
+The Phase 15 loan module is implemented and builds successfully.
+
+| Surface | Route | Responsibility |
+|---|---|---|
+| Applicant loans | `/my-loans` | ARB and ARBO Head applications, payment submissions, schedules, and income/expense ledger |
+| Admin management | `/loan-management` | Approval/rejection, flat-interest schedule generation, receipt verification, disputes, defaults, archives, and CSV reporting |
+| Cooperative monitoring | `/arbo-dashboard` → Loans | ARBO Head portfolio view and member receipt verification |
+
+The module uses `/loans`, `/loanPayments`, and `/loanIncomeExpenses`. Firestore
+creates these collections automatically on their first successful write. Loan
+receipts use the shared Supabase Storage helper and save public URLs in
+Firestore, rather than embedding Base64 data in loan documents.
+
+Cooperative applications store a `memberAllocations` array with each member's
+and the ARBO Head's assigned amount. The head must allocate the full requested
+principal: allocations may be unequal and may include zero for a participant
+who opts out, but their sum must equal the loan amount. The allocation is shown
+to the ARBO Head, applicant, and admin during review.
+
+The admin dashboard also provides a dedicated defaulter/reminder view,
+future-payment term editing, manual close/default actions, payment schedule
+expansion, and per-ARB profitability rows sorted by net performance. The ARBO
+Head dashboard shows collected totals, next due dates, expandable payment
+history, and an in-page receipt preview.
+
+Payment review rules are deliberate:
+
+- An admin can verify any applicant payment.
+- An ARBO Head can verify member payments in the cooperative portfolio, but
+  their own payment remains admin-only.
+- Disputing a receipt requires a written reason. The reason is stored on the
+  payment and shown to the applicant.
+- Applicants can resubmit a corrected Supabase receipt with explanatory notes.
+  Resubmission clears the active dispute state but preserves the latest reason
+  in `lastDisputeReason`; the balance changes only after verification.
+
+Rejected individual loan applications remain as the same loan record and are
+resubmitted from My Loans. Rejected cooperative applications are resubmitted
+from the ARBO Dashboard modal. Both flows show the administrator's rejection
+reason, preserve cooperative allocations, require correction notes, and return
+the application to `pending_approval` (or `needs_review` when the history flag
+still applies).
+
+The applicant income/expense ledger supports an explicit loan selector. It can
+show all loans and general entries or isolate one individual/cooperative loan.
+New entries inherit the selected loan, and loan-payment expenses require a
+matching payment from that loan.
+
+Cooperative members can also see cooperative loans initiated by their ARBO Head.
+`LoanApplication.tsx` listens to `/cooperativeMembers` for the signed-in user's
+cooperative IDs, then includes matching cooperative loans and their shared
+payment schedules in the member's loan view.
+
+Cooperative payment records include `memberId` and `memberName`. Members see
+all payment history rows, but payment/resubmission controls are rendered only
+for rows owned by the signed-in member. The admin loan-management view also
+splits legacy unowned cooperative upcoming/overdue/disputed records into
+member-owned records using the saved allocation amounts.
+
+`LoanApplication.tsx` keeps the personal My Loans list strict: it uses the
+Firebase Auth UID and `applicantType === "individual"`. Cooperative loans are
+shown separately as read-only shared history with owner-only payment actions.
+Members can also submit a full early repayment for their own remaining
+cooperative share; verification marks that member's remaining schedule rows
+paid while leaving other members' schedules active.
+
+Notification queries no longer depend on a Firestore `where` + `orderBy`
+composite index, which previously caused the notification bell to stay empty
+when the index was unavailable. Loan notifications now route admins to Loan
+Management, and the ARBO Dashboard Admin Notes tab displays cooperative loan
+approval notes, rejection reasons, and resubmission notes.
+
+The flat-interest calculation is:
+
+`interest = principal × rate / 100 × termMonths / 12`
+
+Payment frequencies supported by the schedule generator are monthly, quarterly,
+semi-annual, and annual. The final installment receives any rounding remainder.
 
 **Old `pending` status has been REMOVED.** Any existing docs with `pending` in Firestore won't appear in the new tabs.
 
@@ -189,7 +273,8 @@ ARB creates account / application
 | `src/components/ProtectedRoute.tsx` | Route guard — checks `allowedRoles`                                       |
 | `src/components/Sidebar.tsx`        | Navigation — role-based menu items                                        |
 | `src/components/StatusBadge.tsx`    | `ApplicationStatus` type + colored chip component                         |
-| `src/firebase/config.ts`            | Firebase init — exports `auth`, `db`, `storage`                           |
+| `src/firebase/config.ts`            | Firebase init — exports `auth` and `db`                                    |
+| `src/supabase/config.ts`            | Supabase client and public `uploads` bucket                                |
 | `src/data/locality.json`            | Negros Occidental + Oriental provinces, municipalities, and ALL barangays |
 
 ### Pages
@@ -198,13 +283,16 @@ ARB creates account / application
 | ------------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
 | `Login.tsx`         | public               | Email/password login with distinct error messages                                              |
 | `Register.tsx`      | public               | Multi-step ARB registration (step 1 → personal, step 2 → docs skippable, step 3 → credentials) |
-| `Dashboard.tsx`     | admin/staff/surveyor | Role-based stats overview                                                                      |
+| `Dashboard.tsx`     | admin/staff/encoder | Role-based stats overview                                                                      |
 | `MyApplication.tsx` | arb                  | View/upload docs, respond to disputes, see land titles, create new apps                        |
 | `ReviewApps.tsx`    | admin/staff          | Dual-pane review: left list, right detail. Forward, dispute, revert, override                  |
-| `LandTitles.tsx`    | surveyor/admin       | Encode land with Leaflet map pin + photo upload                                                |
-| `Search.tsx`        | admin/staff/surveyor | Real-time search across all land titles                                                        |
-| `AdminUsers.tsx`    | admin                | Create staff/surveyor accounts (uses secondary Firebase app)                                   |
-| `AuditLogs.tsx`     | admin/staff/surveyor | Immutable audit trail with role filter + search + pagination                                   |
+| `LandTitles.tsx`    | encoder/admin        | Encode land with Leaflet map pin + photo upload                                                |
+| `Search.tsx`        | admin/staff/encoder  | Real-time search across all land titles                                                        |
+| `AdminUsers.tsx`    | admin                | Create and edit system users (uses secondary Firebase app)                                    |
+| `AuditLogs.tsx`     | admin/staff/encoder  | Immutable audit trail with role filter + search + pagination                                   |
+| `LoanApplication.tsx` | arb/arbo_head     | Applications, payment receipts, dispute resubmissions, and ledger                          |
+| `LoanManagement.tsx` | admin              | Loan lifecycle, payment review, defaults, and profitability report                         |
+| `ArboDashboard.tsx` | arbo_head           | Cooperative portfolio and member payment verification                                      |
 
 ---
 
@@ -216,11 +304,18 @@ ARB creates account / application
 - ✅ **Review Applications**: 4 tabs (Staff/Surveyor/Admin/Resolved), search, real-time onSnapshot, separate staffNotes/adminNotes, forward/dispute/revert with confirmation dialog, admin override
 - ✅ **Surveyor**: Leaflet map with pin-dropping, manual coord entry syncs map, multi-photo upload, duplicate title number detection
 - ✅ **Search**: Real-time onSnapshot, filter by title/beneficiary/lot/municipality
-- ✅ **Admin Users**: Create staff/surveyor with secondary Firebase app
+- ✅ **Admin Users**: Create staff/encoder users with secondary Firebase app
 - ✅ **Audit Logs**: Immutable log on every action, role-scoped visibility, search by App ID, pagination
 - ✅ **Sidebar**: Role-based nav, "Help" replaced with "Audit Logs", ARB has single "My CLOA Record"
 - ✅ **Dashboard**: Staff/Admin/Surveyor role-specific stats with live Firestore counts
 - ✅ **Locality data**: All 57 municipalities with embedded barangays as PSGC API fallback
+- ✅ **Loan management**: Individual and cooperative applications, schedules,
+  Supabase receipt uploads, admin/ARBO review, defaults, profitability, and
+  completion handling
+- ✅ **Payment corrections**: Required dispute notes, applicant-facing dispute
+  reasons, corrected receipt resubmission, and preserved dispute history
+- ✅ **Applicant form styling**: Loan, payment, and income/expense modal inputs
+  use explicit Tailwind classes rather than an undefined `.input` selector
 
 ---
 
@@ -231,12 +326,13 @@ ARB creates account / application
 - [ ] **Firestore composite indexes**: The `ReviewApps.tsx` query `orderBy("submittedAt", "desc")` on the full `applications` collection needs a composite index. Remove `orderBy` and sort client-side if errors persist.
 - [ ] **Surveyor page**: After successful submit, the page shows success then `fetchApprovedApplicants()` refetches. The success message was moved outside the `allApplicants.length === 0` conditional — verify this works.
 - [ ] **Document realtime sync**: Staff review uses `onSnapshot` on applications. If document thumbnails don't update when ARB uploads, check that the listener is properly reacting to `documents.*` field changes.
-- [ ] **Base64 size limits**: Firestore has 1MB per document limit. Large doc uploads (high-res photos) may hit this. Consider Firebase Storage as alternative.
+- [ ] **Base64 size limits**: Legacy application documents remain in Firestore and
+  may hit the 1MB document limit. Loan receipts already use Supabase Storage.
 
 ### Medium Priority
 
 - [ ] **Mobile responsiveness**: Test on actual mobile devices — the Sidebar and layout should work but hasn't been QA'd.
-- [ ] **Edge cases**: What happens when a surveyor tries to encode a title that was already encoded? The duplicate check works, but the UI should handle it gracefully.
+- [ ] **Edge cases**: What happens when an encoder tries to encode a title that was already encoded? The duplicate check works, but the UI should handle it gracefully.
 - [ ] **Profitability Tracking**: Greyed out in sidebar — if client asks, implement as a separate module.
 - [ ] **Password reset**: Works via Firebase Auth, but there's no "reset success" landing page for the user after clicking the email link.
 
@@ -253,7 +349,7 @@ ARB creates account / application
 
 ### Secondary Firebase App for Admin User Creation
 
-When an Admin creates a Staff/Surveyor account, the app creates a **temporary secondary Firebase app** to avoid logging out the admin:
+When an Admin creates a Staff or Encoder account, the app creates a **temporary secondary Firebase app** to avoid logging out the admin:
 
 ```typescript
 const secondaryApp = initializeApp(firebaseConfig, `temp-${Date.now()}`);
@@ -264,11 +360,15 @@ await deleteApp(secondaryApp);
 
 File: `src/pages/AdminUsers.tsx`
 
-### Base64 Document Storage
+### Storage split
 
-All 4 document types (cedula, birthCert, brgyCert, picture) are stored as Base64 data URIs directly in the Firestore application document. Images are resized to max 600px at 0.6 quality JPEG to stay under Firestore's 1MB limit. PDFs are also stored as Base64.
+Legacy registration documents are stored as Base64 data URIs directly in the
+Firestore application document. Images are resized to max 600px at 0.6 quality
+JPEG to stay under Firestore's 1MB limit. Loan receipts and shared uploads use
+Supabase Storage and store public URLs in Firestore.
 
-**Downside**: This uses Firestore bandwidth heavily. If the app scales, consider migrating to Firebase Storage.
+**Downside**: Legacy Base64 application documents use Firestore bandwidth
+heavily; migrate those documents to Supabase if the app scales.
 
 ### PSGC API + Local Fallback
 
@@ -276,7 +376,7 @@ Barangay loading tries the PSGC GitLab API first. If it fails (404, network erro
 
 ### Audit Logs Are Immutable
 
-Every action writes to `/auditLogs/{autoId}`. Logs are never deleted or updated — they are append-only for government compliance. Staff/surveyor users see only their own actions; admin sees all.
+Every action writes to `/auditLogs/{autoId}`. Logs are never deleted or updated — they are append-only for government compliance. Staff/encoder users see only their own actions; admin sees all.
 
 ---
 
@@ -322,4 +422,4 @@ npm run dev        # Start on localhost:5173
 3. Surveyor user → Admin creates in `/accounts`
 4. Admin user → Create directly in Firebase Console > Authentication
 
-**To understand the workflow**: Register as ARB → Login as Staff to `/review-apps` → Forward to surveyor → Login as Surveyor to `/land-titles` → Encode title → Login as Admin to `/review-apps` (Admin Stage tab) → Approve.
+**To understand the workflow**: Register as ARB → Login as Staff to `/review-apps` → Forward to encoder → Login as Encoder to `/land-titles` → Encode title → Login as Admin to `/review-apps` (Admin Stage tab) → Approve.

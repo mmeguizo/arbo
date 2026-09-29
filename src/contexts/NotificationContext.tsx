@@ -9,7 +9,6 @@ import {
   collection,
   query,
   where,
-  orderBy,
   onSnapshot,
   addDoc,
   updateDoc,
@@ -34,10 +33,22 @@ export interface Notification {
     | "blocked"
     | "training_assigned"
     | "training_reminder"
-    | "training_acknowledged";
+    | "training_acknowledged"
+    | "password_reset_requested"
+    | "loan_submitted"
+    | "loan_approved"
+    | "loan_rejected"
+    | "payment_due_soon"
+    | "payment_overdue"
+    | "payment_received"
+    | "payment_verified"
+    | "payment_disputed"
+    | "loan_completed"
+    | "loan_defaulted";
   title: string;
   message: string;
   applicationId: string | null;
+  loanId?: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -78,7 +89,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
     const q = query(
       collection(db, "notifications"),
       where("recipientId", "==", profile.uid),
-      orderBy("createdAt", "desc"),
     );
 
     const unsub = onSnapshot(
@@ -95,7 +105,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
           prev.forEach((n) => {
             if (!ids.has(n.id)) merged.push(n);
           });
-          return merged.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          return merged.sort((a, b) =>
+            b.createdAt.localeCompare(a.createdAt),
+          );
         });
       },
       (err) => {
@@ -109,7 +121,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
       const qRole = query(
         collection(db, "notifications"),
         where("recipientRole", "==", "admin"),
-        orderBy("createdAt", "desc"),
       );
       unsubRole = onSnapshot(qRole, (snap) => {
         const roleList: Notification[] = [];
