@@ -28,6 +28,8 @@ import { TrainingManagement } from "./pages/TrainingManagement";
 import { MyTrainings } from "./pages/MyTrainings";
 import { LoanApplication } from "./pages/LoanApplication";
 import { LoanManagement } from "./pages/LoanManagement";
+import { BeneficiaryMonitor } from "./pages/BeneficiaryMonitor";
+import { FarmMonitoring } from "./pages/FarmMonitoring";
 
 // A small gatekeeper component that routes authenticated users to their natural landing page
 const AuthRedirect: React.FC = () => {
@@ -154,6 +156,24 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <Reports />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/beneficiary-monitor"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <BeneficiaryMonitor />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/farm-monitoring"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <FarmMonitoring />
                 </ProtectedRoute>
               }
             />

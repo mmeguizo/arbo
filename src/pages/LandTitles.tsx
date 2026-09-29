@@ -376,7 +376,7 @@ export const LandTitles: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-y-auto min-h-0">
+      <div className="flex-1 flex flex-col overflow-y-auto min-h-0 pt-14 md:pt-0">
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between z-10 shrink-0">
           <div className="text-left">
             <p className="text-[10px] uppercase font-bold tracking-widest text-emerald-800 m-0">
