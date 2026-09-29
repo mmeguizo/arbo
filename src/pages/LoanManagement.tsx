@@ -1114,6 +1114,9 @@ const LoanRow: React.FC<{
   onComplete,
 }) => {
   const status = LOAN_STATUS_CONFIG[loan.status];
+  const scheduledPayments = payments.filter(
+    (payment) => !payment.isEarlyRepayment,
+  );
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <button onClick={onExpand} className="flex w-full flex-wrap items-center justify-between gap-3 text-left">
@@ -1158,11 +1161,11 @@ const LoanRow: React.FC<{
               <tr><th className="p-2">#</th><th className="p-2">Due</th><th className="p-2">Due Amount</th><th className="p-2">Paid</th><th className="p-2">Status</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {[...payments].sort((a, b) => a.paymentNumber - b.paymentNumber).map((payment) => {
+              {[...scheduledPayments].sort((a, b) => a.paymentNumber - b.paymentNumber).map((payment) => {
                 const paymentStatus = PAYMENT_STATUS_CONFIG[payment.status];
                 return <tr key={payment.id}><td className="p-2">{payment.paymentNumber}</td><td className="p-2">{formatDate(payment.dueDate)}</td><td className="p-2">{money(payment.amountDue)}</td><td className="p-2">{money(payment.amountPaid)}</td><td className="p-2"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${paymentStatus.bgColor} ${paymentStatus.color}`}>{paymentStatus.label}</span>{payment.receiptImage && <a className="ml-2 text-emerald-700 underline" href={payment.receiptImage} target="_blank" rel="noreferrer">Receipt</a>}</td></tr>;
               })}
-              {payments.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-slate-400">No payment schedule.</td></tr>}
+              {scheduledPayments.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-slate-400">No payment schedule.</td></tr>}
             </tbody>
           </table>
         </div>
