@@ -365,6 +365,13 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
   const getAck = (trainingId: string, userId: string) =>
     acks.find((a) => a.trainingId === trainingId && a.userId === userId);
 
+  const getAckStatus = (
+    ack: any,
+  ): "pending" | "acknowledged" | "declined" =>
+    ack?.status === "acknowledged" || ack?.status === "declined"
+      ? ack.status
+      : "pending";
+
   const sendNudge = async (userId: string, trainingName: string) => {
     await addDoc(collection(db, "notifications"), {
       recipientId: userId,
@@ -403,14 +410,13 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
     <div className="space-y-4">
       {trainings.map((t: any) => {
         const pendingMembers = members.filter((m) => {
-          const ack = getAck(t.id, m.userId);
-          return !ack || ack.status === "pending";
+          return getAckStatus(getAck(t.id, m.userId)) === "pending";
         });
         const ackMembers = members.filter(
-          (m) => getAck(t.id, m.userId)?.status === "acknowledged",
+          (m) => getAckStatus(getAck(t.id, m.userId)) === "acknowledged",
         );
         const declinedMembers = members.filter(
-          (m) => getAck(t.id, m.userId)?.status === "declined",
+          (m) => getAckStatus(getAck(t.id, m.userId)) === "declined",
         );
         const isExpanded = expandedTraining === t.id;
         return (
@@ -498,6 +504,7 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
                   <div className="space-y-1.5">
                     {members.map((m) => {
                       const ack = getAck(t.id, m.userId);
+                      const ackStatus = getAckStatus(ack);
                       return (
                         <div
                           key={m.userId}
@@ -510,18 +517,18 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
                               </span>
                               <span
                                 className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                  !ack
+                                  ackStatus === "pending"
                                     ? "bg-amber-100 text-amber-700"
-                                    : ack.status === "acknowledged"
+                                    : ackStatus === "acknowledged"
                                       ? "bg-emerald-100 text-emerald-700"
                                       : "bg-red-100 text-red-700"
                                 }`}
                               >
-                                {!ack
-                                  ? "Pending"
-                                  : ack.status === "acknowledged"
-                                    ? "✓ Attending"
-                                    : "✗ Declined"}
+                                {ackStatus === "acknowledged"
+                                  ? "✓ Attending"
+                                  : ackStatus === "declined"
+                                    ? "✗ Declined"
+                                    : "Pending"}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -532,7 +539,7 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
                                   ).toLocaleDateString()}
                                 </span>
                               )}
-                              {(!ack || ack.status === "pending") && (
+                              {ackStatus === "pending" && (
                                 <button
                                   onClick={() => sendNudge(m.userId, t.name)}
                                   className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
