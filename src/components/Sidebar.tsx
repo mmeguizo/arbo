@@ -68,21 +68,33 @@ export const Sidebar: React.FC = () => {
     if (role === "arb") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "My CLOA Record", path: "/my-application", icon: FileText },
-        { label: "My Grants", path: "/my-grants", icon: TrendingUp },
-        { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
-        { label: "My Loans", path: "/my-loans", icon: Landmark },
+        {
+          label: "My Services",
+          icon: FileText,
+          children: [
+            { label: "My CLOA Record", path: "/my-application", icon: FileText },
+            { label: "My Grants", path: "/my-grants", icon: TrendingUp },
+            { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
+            { label: "My Loans", path: "/my-loans", icon: Landmark },
+          ],
+        },
       ];
     }
 
     if (role === "arbo_head") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "ARBO Dashboard", path: "/arbo-dashboard", icon: Building2 },
-        { label: "My CLOA Record", path: "/my-application", icon: FileText },
-        { label: "My Grants", path: "/my-grants", icon: TrendingUp },
-        { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
-        { label: "My Loans", path: "/my-loans", icon: Landmark },
+        {
+          label: "ARBO & My Services",
+          icon: Building2,
+          children: [
+            { label: "ARBO Dashboard", path: "/arbo-dashboard", icon: Building2 },
+            { label: "My CLOA Record", path: "/my-application", icon: FileText },
+            { label: "My Grants", path: "/my-grants", icon: TrendingUp },
+            { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
+            { label: "My Loans", path: "/my-loans", icon: Landmark },
+          ],
+        },
       ];
     }
 
