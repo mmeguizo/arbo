@@ -16,6 +16,7 @@ import { db } from "../firebase/config";
 import { broadcastNotification } from "../contexts/NotificationContext";
 import { formatDate } from "../utils/formatters";
 import { getDocumentPath, uploadFile } from "../utils/storage";
+import { writeAuditLog } from "../utils/audit";
 import {
   AlertCircle,
   Calendar,
@@ -23,6 +24,7 @@ import {
   ChevronUp,
   DollarSign,
   Landmark,
+  Loader2,
   Plus,
   TrendingDown,
   TrendingUp,
@@ -62,6 +64,11 @@ const canManageLoanPayment = (
   loan?.applicantType === "cooperative"
     ? payment.memberId === uid
     : payment.applicantId === uid;
+
+const isPaymentPendingVerification = (payment: LoanPayment) =>
+  (payment.status === "paid" || payment.status === "partial") &&
+  !payment.verifiedAt &&
+  (payment.amountPaid > 0 || Boolean(payment.paidAt));
 
 const calculateOwnedBalance = (
   loan: Loan,
@@ -475,6 +482,17 @@ export const LoanApplication: React.FC = () => {
             updatedAt: now,
           },
         );
+        await writeAuditLog({
+          actor: { uid: user.uid, name: profile.name, role: profile.role },
+          action: "loan_resubmitted",
+          entityType: "loan",
+          entityId: resubmittingLoan.id,
+          oldStatus: "rejected",
+          newStatus: resubmittingLoan.hasHistoryFlag
+            ? "needs_review"
+            : "pending_approval",
+          notes: `${profile.name} resubmitted loan ${resubmittingLoan.id}. Notes: ${formNotes.trim()}`,
+        });
       } else {
         const loanId = generateLoanId();
         await addDoc(collection(db, "loans"), {
@@ -506,6 +524,14 @@ export const LoanApplication: React.FC = () => {
           createdAt: now,
           createdBy: user.uid,
           updatedAt: now,
+        });
+        await writeAuditLog({
+          actor: { uid: user.uid, name: profile.name, role: profile.role },
+          action: "loan_submitted",
+          entityType: "loan",
+          entityId: loanId,
+          newStatus: history.hasDefaults ? "needs_review" : "pending_approval",
+          notes: `${profile.name} submitted a ${money(amount)} individual loan application.`,
         });
       }
       await broadcastNotification(
@@ -574,6 +600,19 @@ export const LoanApplication: React.FC = () => {
         resubmissionNotes:
           paymentForEntry.status === "disputed" ? payNotes.trim() : null,
       });
+      await writeAuditLog({
+        actor: { uid: user.uid, name: profile.name, role: profile.role },
+        action:
+          paymentForEntry.status === "disputed"
+            ? "loan_payment_resubmitted"
+            : "loan_payment_submitted",
+        entityType: "loan_payment",
+        entityId: paymentForEntry.id,
+        applicationId: paymentForLoan,
+        oldStatus: paymentForEntry.status,
+        newStatus: amount >= paymentForEntry.amountDue ? "paid" : "partial",
+        notes: `${profile.name} submitted a ${money(amount)} payment for loan ${paymentForLoan}.`,
+      });
       await broadcastNotification(
         "admin",
         "payment_received",
@@ -636,7 +675,7 @@ export const LoanApplication: React.FC = () => {
           payment.loanId === earlyRepaymentLoan.id &&
           canManageLoanPayment(earlyRepaymentLoan, payment, profile.uid),
       );
-      await addDoc(collection(db, "loanPayments"), {
+      const earlyRepayment = await addDoc(collection(db, "loanPayments"), {
         loanId: earlyRepaymentLoan.id,
         applicantId: profile.uid,
         memberId: profile.uid,
@@ -655,6 +694,15 @@ export const LoanApplication: React.FC = () => {
         receiptImage,
         receiptNotes: earlyRepaymentNotes.trim(),
         createdAt: new Date().toISOString(),
+      });
+      await writeAuditLog({
+        actor: { uid: user.uid, name: profile.name, role: profile.role },
+        action: "early_repayment_submitted",
+        entityType: "loan_payment",
+        entityId: earlyRepayment.id,
+        applicationId: earlyRepaymentLoan.id,
+        newStatus: "paid",
+        notes: `${profile.name} submitted an early repayment of ${money(amount)} for ${earlyRepaymentLoan.id}.`,
       });
       await broadcastNotification(
         "admin",
@@ -956,6 +1004,8 @@ export const LoanApplication: React.FC = () => {
                                       payment,
                                       profile.uid,
                                     );
+                                  const pendingVerification =
+                                    isPaymentPendingVerification(payment);
                                   return (
                                     <tr key={payment.id}>
                                       <td className="p-2 font-bold">{payment.paymentNumber}</td>
@@ -967,13 +1017,22 @@ export const LoanApplication: React.FC = () => {
                                       <td className="p-2">{formatDate(payment.dueDate)}</td>
                                       <td className="p-2 font-bold">{money(payment.amountDue)}</td>
                                       <td className="p-2">
-                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${paymentStatus.bgColor} ${paymentStatus.color}`}>
-                                          {paymentStatus.label}
+                                        <span
+                                          className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
+                                            pendingVerification
+                                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                                              : `${paymentStatus.bgColor} ${paymentStatus.color}`
+                                          }`}
+                                        >
+                                          {pendingVerification
+                                            ? "Pending verification"
+                                            : paymentStatus.label}
                                         </span>
                                       </td>
                                       <td className="p-2 text-right">
                                         {loan.status === "active" &&
                                           canManagePayment &&
+                                          !pendingVerification &&
                                           (payment.status === "upcoming" ||
                                             payment.status === "disputed") && (
                                           <button
@@ -984,6 +1043,13 @@ export const LoanApplication: React.FC = () => {
                                               ? "Resubmit Payment"
                                               : "Make Payment"}
                                           </button>
+                                        )}
+                                        {canManagePayment &&
+                                        loan.status === "active" &&
+                                        pendingVerification && (
+                                          <span className="text-[10px] font-semibold text-amber-700">
+                                            Awaiting admin verification
+                                          </span>
                                         )}
                                         {loan.applicantType === "cooperative" &&
                                           !canManagePayment && (
@@ -1020,10 +1086,23 @@ export const LoanApplication: React.FC = () => {
                   </div>
                   {cooperativeLoans.map((loan) => {
                     const loanPayments = paymentsForLoan(loan.id);
+                    const scheduledPayments = loanPayments.filter(
+                      (payment) => !payment.isEarlyRepayment,
+                    );
                     const expanded = expandedLoan === loan.id;
                     const ownedBalance = profile
                       ? calculateOwnedBalance(loan, payments, profile.uid)
                       : 0;
+                    const pendingEarlyRepayment =
+                      profile &&
+                      loanPayments.some(
+                        (payment) =>
+                          payment.isEarlyRepayment &&
+                          payment.memberId === profile.uid &&
+                          !payment.verifiedAt &&
+                          (payment.status === "paid" ||
+                            payment.status === "partial"),
+                      );
                     return (
                       <section
                         key={loan.id}
@@ -1065,15 +1144,23 @@ export const LoanApplication: React.FC = () => {
                                 Your remaining cooperative share:{" "}
                                 <b>{money(ownedBalance)}</b>
                               </span>
-                              {loan.status === "active" && ownedBalance > 0 && (
-                                <button
-                                  onClick={() =>
-                                    openEarlyRepaymentModal(loan)
-                                  }
-                                  className="rounded-lg bg-indigo-700 px-3 py-2 text-[10px] font-bold text-white"
-                                >
-                                  Repay My Share Early
-                                </button>
+                              {pendingEarlyRepayment ? (
+                                <span className="font-semibold text-amber-700">
+                                  Early repayment is awaiting admin
+                                  verification.
+                                </span>
+                              ) : (
+                                loan.status === "active" &&
+                                ownedBalance > 0 && (
+                                  <button
+                                    onClick={() =>
+                                      openEarlyRepaymentModal(loan)
+                                    }
+                                    className="rounded-lg bg-indigo-700 px-3 py-2 text-[10px] font-bold text-white"
+                                  >
+                                    Repay My Share Early
+                                  </button>
+                                )
                               )}
                             </div>
                             <div className="overflow-x-auto">
@@ -1089,7 +1176,7 @@ export const LoanApplication: React.FC = () => {
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                  {loanPayments.map((payment) => {
+                                  {scheduledPayments.map((payment) => {
                                     const canManagePayment =
                                       profile &&
                                       canManageLoanPayment(
@@ -1099,6 +1186,8 @@ export const LoanApplication: React.FC = () => {
                                       );
                                     const paymentStatus =
                                       PAYMENT_STATUS_CONFIG[payment.status];
+                                    const pendingVerification =
+                                      isPaymentPendingVerification(payment);
                                     return (
                                       <tr key={payment.id}>
                                         <td className="p-2">
@@ -1117,18 +1206,21 @@ export const LoanApplication: React.FC = () => {
                                         </td>
                                         <td className="p-2">
                                           <span
-                                            className={`rounded-full border px-2 py-1 text-[10px] font-bold ${paymentStatus.bgColor} ${paymentStatus.color}`}
+                                            className={`rounded-full border px-2 py-1 text-[10px] font-bold ${
+                                              pendingVerification
+                                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                                : `${paymentStatus.bgColor} ${paymentStatus.color}`
+                                            }`}
                                           >
-                                            {payment.isEarlyRepayment
-                                              ? payment.verifiedAt
-                                                ? "Early repayment verified"
-                                                : "Early repayment pending review"
+                                            {pendingVerification
+                                                ? "Pending verification"
                                               : paymentStatus.label}
                                           </span>
                                         </td>
                                         <td className="p-2 text-right">
                                           {canManagePayment &&
                                             loan.status === "active" &&
+                                            !pendingVerification &&
                                             (payment.status === "upcoming" ||
                                               payment.status === "disputed") && (
                                               <button
@@ -1141,6 +1233,13 @@ export const LoanApplication: React.FC = () => {
                                                   ? "Resubmit Payment"
                                                   : "Make Payment"}
                                               </button>
+                                            )}
+                                          {canManagePayment &&
+                                            loan.status === "active" &&
+                                            pendingVerification && (
+                                            <span className="text-[10px] font-semibold text-amber-700">
+                                              Awaiting admin verification
+                                            </span>
                                             )}
                                           {!canManagePayment && (
                                             <span className="text-[10px] text-slate-400">
@@ -1451,7 +1550,17 @@ const LedgerSection: React.FC<{
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => <label className="block text-xs font-bold text-slate-600">{label}<span className="mt-1 block">{children}</span></label>;
 const ErrorText: React.FC<{ text: string }> = ({ text }) => <p className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">{text}</p>;
-const SubmitButton: React.FC<{ loading: boolean; label: string }> = ({ loading, label }) => <button disabled={loading} className="w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50">{loading ? "Saving..." : label}</button>;
+const SubmitButton: React.FC<{ loading: boolean; label: string }> = ({ loading, label }) => (
+  <button
+    type="submit"
+    disabled={loading}
+    aria-busy={loading}
+    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    {loading && <Loader2 size={16} className="animate-spin" />}
+    {loading ? "Submitting..." : label}
+  </button>
+);
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
   <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4">
     <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl">

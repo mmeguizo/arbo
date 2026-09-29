@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
+import { useAuth } from "../contexts/AuthContext";
 import {
   collection,
   getDocs,
@@ -37,6 +38,7 @@ import {
 } from "lucide-react";
 
 import localityData from "../data/locality.json";
+import { writeAuditLog } from "../utils/audit";
 
 interface UserProfile {
   uid: string;
@@ -54,6 +56,7 @@ interface UserProfile {
 }
 
 export const AdminUsers: React.FC = () => {
+  const { profile } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -215,6 +218,14 @@ export const AdminUsers: React.FC = () => {
       };
 
       await setDoc(doc(db, "users", newUserUid), profilePayload);
+      await writeAuditLog({
+        actor: profile,
+        action: "user_created",
+        entityType: "user",
+        entityId: newUserUid,
+        newStatus: "active",
+        notes: `Admin created ${role} account for ${name.trim()} (${email.trim().toLowerCase()}).`,
+      });
 
       // Success feedback
       setFeedback({
@@ -259,6 +270,13 @@ export const AdminUsers: React.FC = () => {
   ) => {
     try {
       await updateDoc(doc(db, "users", userProfile.uid), { role: newRole });
+      await writeAuditLog({
+        actor: profile,
+        action: "user_role_updated",
+        entityType: "user",
+        entityId: userProfile.uid,
+        notes: `Admin changed ${userProfile.name}'s role from ${userProfile.role} to ${newRole}.`,
+      });
       setFeedback({
         type: "success",
         msg: `${userProfile.name}'s role updated to ${newRole}.`,
@@ -275,6 +293,15 @@ export const AdminUsers: React.FC = () => {
       const newStatus = !userProfile.isActive;
       await updateDoc(doc(db, "users", userProfile.uid), {
         isActive: newStatus,
+      });
+      await writeAuditLog({
+        actor: profile,
+        action: "user_status_updated",
+        entityType: "user",
+        entityId: userProfile.uid,
+        oldStatus: userProfile.isActive === false ? "disabled" : "active",
+        newStatus: newStatus ? "active" : "disabled",
+        notes: `Admin ${newStatus ? "enabled" : "disabled"} user ${userProfile.name}.`,
       });
       setFeedback({
         type: "success",
@@ -335,6 +362,13 @@ export const AdminUsers: React.FC = () => {
         municipality: editForm.municipality,
         barangay: editForm.barangay.trim(),
       });
+      await writeAuditLog({
+        actor: profile,
+        action: "user_profile_updated",
+        entityType: "user",
+        entityId: editingUser.uid,
+        notes: `Admin updated the profile for ${editingUser.name}.`,
+      });
       setEditingUser(null);
       setFeedback({
         type: "success",
@@ -353,6 +387,12 @@ export const AdminUsers: React.FC = () => {
     try {
       const auth = getAuth();
       await sendPasswordResetEmail(auth, emailToReset);
+      await writeAuditLog({
+        actor: profile,
+        action: "password_reset_email_requested",
+        entityType: "user",
+        notes: `Admin requested a password reset email for ${emailToReset}.`,
+      });
       setFeedback({
         type: "success",
         msg: `Password reset email sent to ${emailToReset}`,

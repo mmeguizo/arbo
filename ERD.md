@@ -361,7 +361,11 @@ The central entity. All other collections reference back to users via `userId`, 
 ### `/auditLogs/{autoId}`
 
 - Immutable — never deleted or updated.
-- Tracks every status change, document update, and action across the workflow.
+- Tracks government-relevant workflow actions across applications, land titles,
+  loans, payments, cooperative reviews, and account administration.
+- Core fields include `actorId`, `actor`, `actorRole`, `action`, `entityType`,
+  `entityId`, optional `applicationId`, `oldStatus`, `newStatus`, `notes`, and
+  an ISO `timestamp`.
 
 ### `/notifications/{autoId}`
 

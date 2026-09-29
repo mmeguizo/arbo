@@ -13,6 +13,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+import { writeAuditLog } from "../utils/audit";
 import { exportToCSV, formatDate } from "../utils/formatters";
 import {
   AlertTriangle,
@@ -436,6 +437,15 @@ export const LoanManagement: React.FC = () => {
         });
       });
       await batch.commit();
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_approved",
+        entityType: "loan",
+        entityId: selectedLoan.id,
+        oldStatus: selectedLoan.status,
+        newStatus: "active",
+        notes: `Admin ${profile.name} approved loan ${selectedLoan.id} at ${rate}% interest.${approvalNotes.trim() ? ` Notes: ${approvalNotes.trim()}` : ""}`,
+      });
       try {
         await notifyApplicant(
           selectedLoan,
@@ -469,6 +479,15 @@ export const LoanManagement: React.FC = () => {
         rejectedReason: rejectionReason.trim(),
         previousRejectedReason: rejectionReason.trim(),
         updatedAt: new Date().toISOString(),
+      });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_rejected",
+        entityType: "loan",
+        entityId: selectedLoan.id,
+        oldStatus: selectedLoan.status,
+        newStatus: "rejected",
+        notes: `Admin ${profile.name} rejected loan ${selectedLoan.id}: ${rejectionReason.trim()}`,
       });
       await notifyApplicant(
         selectedLoan,
@@ -565,6 +584,16 @@ export const LoanManagement: React.FC = () => {
           );
         }
       }
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_payment_verified",
+        entityType: "loan_payment",
+        entityId: payment.id,
+        applicationId: loan.id,
+        oldStatus: payment.status,
+        newStatus: fullyPaid ? "paid" : "partial",
+        notes: `Admin ${profile.name} verified payment ${payment.paymentNumber} for loan ${loan.id}.`,
+      });
       await notifyApplicant(
         loan,
         "payment_verified",
@@ -600,6 +629,16 @@ export const LoanManagement: React.FC = () => {
         verifiedByName: null,
         verifiedAt: null,
       });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_payment_disputed",
+        entityType: "loan_payment",
+        entityId: payment.id,
+        applicationId: loan.id,
+        oldStatus: payment.status,
+        newStatus: "disputed",
+        notes: `Admin ${profile.name} disputed payment ${payment.paymentNumber} for loan ${loan.id}: ${disputeNotes.trim()}`,
+      });
       await notifyApplicant(
         loan,
         "payment_disputed",
@@ -631,6 +670,15 @@ export const LoanManagement: React.FC = () => {
         accountStatus: "closed",
         updatedAt: new Date().toISOString(),
       });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_defaulted",
+        entityType: "loan",
+        entityId: loan.id,
+        oldStatus: loan.status,
+        newStatus: "defaulted",
+        notes: `Admin ${profile.name} marked loan ${loan.id} as defaulted.`,
+      });
       await notifyApplicant(
         loan,
         "loan_defaulted",
@@ -644,12 +692,22 @@ export const LoanManagement: React.FC = () => {
   };
 
   const completeLoan = async (loan: Loan) => {
+    if (!profile) return;
     try {
       await updateDoc(loanRef(loan), {
         status: "completed",
         accountStatus: "closed",
         nextPaymentDue: "",
         updatedAt: new Date().toISOString(),
+      });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_completed",
+        entityType: "loan",
+        entityId: loan.id,
+        oldStatus: loan.status,
+        newStatus: "completed",
+        notes: `Admin ${profile.name} closed loan ${loan.id}.`,
       });
       await notifyApplicant(
         loan,
@@ -665,7 +723,7 @@ export const LoanManagement: React.FC = () => {
 
   const editLoanTerms = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedLoan) return;
+    if (!selectedLoan || !profile) return;
     const rate = Number(editRate);
     const term = Number(editTerm);
     if (!Number.isFinite(rate) || rate < 0 || !Number.isInteger(term) || term < 1) {
@@ -779,6 +837,15 @@ export const LoanManagement: React.FC = () => {
         ),
         nextPaymentDue,
         updatedAt: new Date().toISOString(),
+      });
+      await writeAuditLog({
+        actor: profile,
+        action: "loan_terms_updated",
+        entityType: "loan",
+        entityId: selectedLoan.id,
+        oldStatus: selectedLoan.status,
+        newStatus: selectedLoan.status,
+        notes: `Admin ${profile.name} changed loan ${selectedLoan.id} to ${rate}% interest over ${term} months.`,
       });
       setShowEditTerms(false);
       setSelectedLoan(null);
@@ -1047,6 +1114,9 @@ const LoanRow: React.FC<{
   onComplete,
 }) => {
   const status = LOAN_STATUS_CONFIG[loan.status];
+  const scheduledPayments = payments.filter(
+    (payment) => !payment.isEarlyRepayment,
+  );
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <button onClick={onExpand} className="flex w-full flex-wrap items-center justify-between gap-3 text-left">
@@ -1091,11 +1161,11 @@ const LoanRow: React.FC<{
               <tr><th className="p-2">#</th><th className="p-2">Due</th><th className="p-2">Due Amount</th><th className="p-2">Paid</th><th className="p-2">Status</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {[...payments].sort((a, b) => a.paymentNumber - b.paymentNumber).map((payment) => {
+              {[...scheduledPayments].sort((a, b) => a.paymentNumber - b.paymentNumber).map((payment) => {
                 const paymentStatus = PAYMENT_STATUS_CONFIG[payment.status];
                 return <tr key={payment.id}><td className="p-2">{payment.paymentNumber}</td><td className="p-2">{formatDate(payment.dueDate)}</td><td className="p-2">{money(payment.amountDue)}</td><td className="p-2">{money(payment.amountPaid)}</td><td className="p-2"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${paymentStatus.bgColor} ${paymentStatus.color}`}>{paymentStatus.label}</span>{payment.receiptImage && <a className="ml-2 text-emerald-700 underline" href={payment.receiptImage} target="_blank" rel="noreferrer">Receipt</a>}</td></tr>;
               })}
-              {payments.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-slate-400">No payment schedule.</td></tr>}
+              {scheduledPayments.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-slate-400">No payment schedule.</td></tr>}
             </tbody>
           </table>
         </div>
