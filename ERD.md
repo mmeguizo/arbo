@@ -416,6 +416,22 @@ The central entity. All other collections reference back to users via `userId`, 
   replacement receipt and notes, after which an admin or eligible ARBO Head must
   verify it before totals change.
 
+### Monitoring read surfaces
+
+The monitoring pages are read-only aggregations over the existing collections;
+they do not introduce duplicate beneficiary or farm records:
+
+- `/beneficiary-monitor` joins `/users` with `/applications`, `/landTitles`,
+  `/loans`, `/loanPayments`, `/loanIncomeExpenses`, `/grants`,
+  `/grantReports`, `/trainings`, `/trainingAcknowledgments`, and
+  `/auditLogs` using the existing user, beneficiary, owner, and assignment IDs.
+- `/farm-monitoring` combines equipment/raw-material grant records with
+  equipment-related loan records and uses `/grantReports` for the latest
+  implementation/report status and image links.
+- Both views load live snapshots and calculate display metrics in memory.
+  Firestore writes continue to use the existing workflow pages and audit
+  helpers.
+
 ---
 
 ## 📐 Indexed Queries (Require Firestore Composite Indexes)

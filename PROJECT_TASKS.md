@@ -4,7 +4,7 @@
 >
 > **Status key**: `[ ]` todo | `[~]` in-progress | `[x]` done
 >
-> **Last updated**: 2026-09-29 (loan workflow and documentation audit)
+> **Last updated**: 2026-09-29 (sidebar, monitoring, and mobile layout work)
 
 ---
 
@@ -182,3 +182,15 @@
 - [x] 15.24 Personal loan isolation — Keep ARBO Head-initiated cooperative history separate from the signed-in member's individual My Loans list
 - [x] 15.25 Approval form reset — Clear approval notes and interest rate between loans; require the administrator to enter the rate
 - [x] 15.26 Loan notification visibility — Remove notification index dependency, route loan events correctly, notify cooperative audiences, and surface ARBO loan notes
+
+## Phase 16: Sidebar Reorganization and Monitoring (2026-09-29)
+
+- [x] 16.1 `Sidebar.tsx` — Group admin/staff/encoder navigation into collapsible functional sections while preserving flat ARB and ARBO Head navigation
+- [x] 16.2 `App.tsx` — Add protected admin routes for `/beneficiary-monitor` and `/farm-monitoring`
+- [x] 16.3 `BeneficiaryMonitor.tsx` — Add live 360-degree ARB profile monitoring for CLOA, loans, grants, income/expenses, trainings, payments, and audit activity
+- [x] 16.4 `BeneficiaryMonitor.tsx` — Add search, risk filters, profile tabs, loan/payment details, grant reports, receipts, and responsive list/detail navigation
+- [x] 16.5 `FarmMonitoring.tsx` — Add equipment/material resource monitoring from grants and equipment-related loans
+- [x] 16.6 `FarmMonitoring.tsx` — Add KPI cards, resource filters, latest report status, report links, and CSV export
+- [x] 16.7 Mobile layout normalization — Add fixed mobile header spacing, overflow-safe page shells, and responsive table/detail scrolling
+- [x] 16.8 Documentation — Update ERD, session handover, project context, and task checklist for monitoring and navigation changes
+- [x] 16.9 Verification — `npm run build` and `git diff --check` pass

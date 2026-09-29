@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   ChevronRight,
+  ChevronDown,
   Menu,
   X,
   TrendingUp,
@@ -17,13 +18,37 @@ import {
   Building2,
   GraduationCap,
   Landmark,
+  DollarSign,
+  BarChart3,
+  Shield,
+  Cog,
+  UserSearch,
+  Tractor,
 } from "lucide-react";
+
+interface NavItem {
+  label: string;
+  path: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}
+
+interface NavGroup {
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  children: NavItem[];
+}
+
+type NavEntry = NavItem | NavGroup;
+
+const isNavGroup = (entry: NavEntry): entry is NavGroup =>
+  "children" in entry;
 
 export const Sidebar: React.FC = () => {
   const { profile, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // Helper to check active state
   const isActive = (path: string) => location.pathname === path;
@@ -37,61 +62,127 @@ export const Sidebar: React.FC = () => {
     }
   };
 
-  const getNavItems = () => {
+  const getNavItems = (): NavEntry[] => {
     const role = profile?.role;
 
     if (role === "arb") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "My CLOA Record", path: "/my-application", icon: FileText },
-        { label: "My Grants", path: "/my-grants", icon: TrendingUp },
-        { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
-        { label: "My Loans", path: "/my-loans", icon: Landmark },
+        {
+          label: "My Services",
+          icon: FileText,
+          children: [
+            { label: "My CLOA Record", path: "/my-application", icon: FileText },
+            { label: "My Grants", path: "/my-grants", icon: TrendingUp },
+            { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
+            { label: "My Loans", path: "/my-loans", icon: Landmark },
+          ],
+        },
       ];
     }
 
     if (role === "arbo_head") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "ARBO Dashboard", path: "/arbo-dashboard", icon: Building2 },
-        { label: "My CLOA Record", path: "/my-application", icon: FileText },
-        { label: "My Grants", path: "/my-grants", icon: TrendingUp },
-        { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
-        { label: "My Loans", path: "/my-loans", icon: Landmark },
+        {
+          label: "ARBO & My Services",
+          icon: Building2,
+          children: [
+            { label: "ARBO Dashboard", path: "/arbo-dashboard", icon: Building2 },
+            { label: "My CLOA Record", path: "/my-application", icon: FileText },
+            { label: "My Grants", path: "/my-grants", icon: TrendingUp },
+            { label: "My Trainings", path: "/my-trainings", icon: GraduationCap },
+            { label: "My Loans", path: "/my-loans", icon: Landmark },
+          ],
+        },
       ];
     }
 
     if (role === "staff") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "Review Applications", path: "/review-apps", icon: FileText },
-        { label: "Search Registry", path: "/search", icon: Search },
-        { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
+        {
+          label: "Land Title Verification",
+          icon: Shield,
+          children: [
+            { label: "Review Applications", path: "/review-apps", icon: FileText },
+            { label: "Search Registry", path: "/search", icon: Search },
+          ],
+        },
+        {
+          label: "System",
+          icon: Cog,
+          children: [
+            { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
+          ],
+        },
       ];
     }
 
     if (role === "encoder") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "Encode Title Info", path: "/land-titles", icon: MapPin },
-        { label: "Search Registry", path: "/search", icon: Search },
-        { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
+        {
+          label: "Land Title Verification",
+          icon: Shield,
+          children: [
+            { label: "Encode Title Info", path: "/land-titles", icon: MapPin },
+            { label: "Search Registry", path: "/search", icon: Search },
+          ],
+        },
+        {
+          label: "System",
+          icon: Cog,
+          children: [
+            { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
+          ],
+        },
       ];
     }
 
     if (role === "admin") {
       return [
         { label: "Overview", path: "/dashboard", icon: LayoutDashboard },
-        { label: "Review (Staff Stage)", path: "/review-apps", icon: FileText },
-        { label: "Encoder Stage", path: "/land-titles", icon: MapPin },
-        { label: "Search Registry", path: "/search", icon: Search },
-        { label: "Analytics & Reports", path: "/reports", icon: TrendingUp },
-        { label: "Grant Management", path: "/grants", icon: TrendingUp },
-        { label: "Loan Management", path: "/loan-management", icon: Landmark },
-        { label: "Trainings", path: "/trainings", icon: GraduationCap },
-        { label: "ARBOs", path: "/cooperatives", icon: Building2 },
-        { label: "System Users", path: "/accounts", icon: Settings },
-        { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
+        {
+          label: "Land Title Verification",
+          icon: Shield,
+          children: [
+            { label: "Review Applications", path: "/review-apps", icon: FileText },
+            { label: "Encoder Stage", path: "/land-titles", icon: MapPin },
+            { label: "Search Registry", path: "/search", icon: Search },
+          ],
+        },
+        {
+          label: "Microfinance",
+          icon: DollarSign,
+          children: [
+            { label: "Grant Management", path: "/grants", icon: TrendingUp },
+            { label: "Loan Management", path: "/loan-management", icon: Landmark },
+          ],
+        },
+        {
+          label: "Profitability Tracking",
+          icon: BarChart3,
+          children: [
+            {
+              label: "Beneficiary Monitor",
+              path: "/beneficiary-monitor",
+              icon: UserSearch,
+            },
+            { label: "Trainings", path: "/trainings", icon: GraduationCap },
+            { label: "ARBOs", path: "/cooperatives", icon: Building2 },
+            { label: "Farm Monitoring", path: "/farm-monitoring", icon: Tractor },
+            { label: "Analytics & Reports", path: "/reports", icon: TrendingUp },
+          ],
+        },
+        {
+          label: "System",
+          icon: Cog,
+          children: [
+            { label: "System Users", path: "/accounts", icon: Settings },
+            { label: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
+          ],
+        },
       ];
     }
 
@@ -101,10 +192,20 @@ export const Sidebar: React.FC = () => {
 
   const navItems = getNavItems();
 
+  const setOnlyOpenGroup = (groupLabel: string, isOpen: boolean) => {
+    setOpenGroups(
+      Object.fromEntries(
+        navItems
+          .filter(isNavGroup)
+          .map((group) => [group.label, group.label === groupLabel && isOpen]),
+      ),
+    );
+  };
+
   return (
     <>
       {/* Mobile Top Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 bg-emerald-900 px-4 py-3 text-white md:hidden">
+      <div className="fixed inset-x-0 top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-emerald-900 px-4 py-3 text-white md:hidden">
         <div className="flex items-center space-x-2">
           <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center text-emerald-900 font-bold text-xs p-1">
             <span className="text-stone-900">DAR</span>
@@ -159,17 +260,89 @@ export const Sidebar: React.FC = () => {
 
         {/* Navigation links */}
         <nav className="flex-1 space-y-1.5 px-4 py-6 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.path);
+          {navItems.map((entry) => {
+            if (isNavGroup(entry)) {
+              const isGroupActive = entry.children.some((child) =>
+                isActive(child.path),
+              );
+              const isGroupOpen = openGroups[entry.label] ?? isGroupActive;
+              const GroupIcon = entry.icon;
+              return (
+                <div key={entry.label} className="mb-1">
+                  <button
+                    onClick={() => setOnlyOpenGroup(entry.label, !isGroupOpen)}
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors ${
+                      isGroupActive
+                        ? "text-amber-300"
+                        : "text-emerald-300/70 hover:text-emerald-100"
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <GroupIcon size={14} />
+                      <span className="whitespace-nowrap text-[11px]">
+                        {entry.label}
+                      </span>
+                    </div>
+                    <ChevronDown
+                      size={12}
+                      className={`transition-transform ${
+                        isGroupOpen ? "" : "-rotate-90"
+                      }`}
+                    />
+                  </button>
+                  {isGroupOpen && (
+                    <div className="ml-3 space-y-0.5 border-l border-emerald-700/50 pl-2">
+                      {entry.children.map((child) => {
+                        const ChildIcon = child.icon;
+                        const childActive = isActive(child.path);
+                        return (
+                          <Link
+                            key={child.path}
+                            to={child.path}
+                            onClick={() => {
+                              setIsOpen(false);
+                              setOnlyOpenGroup(entry.label, true);
+                            }}
+                            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                              childActive
+                                ? "bg-emerald-700 font-semibold text-white"
+                                : "text-emerald-100/80 hover:bg-emerald-800/50 hover:text-white"
+                            }`}
+                          >
+                            <ChildIcon
+                              size={15}
+                              className={
+                                childActive
+                                  ? "text-amber-400"
+                                  : "text-emerald-300/60"
+                              }
+                            />
+                            <span>{child.label}</span>
+                            {childActive && (
+                              <ChevronRight
+                                size={12}
+                                className="ml-auto text-amber-400"
+                              />
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const Icon = entry.icon;
+            const active = isActive(entry.path);
             return (
               <Link
-                key={item.path}
-                to={item.path}
+                key={entry.path}
+                to={entry.path}
                 onClick={() => setIsOpen(false)}
-                className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-colors group ${
+                className={`group flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
                   active
-                    ? "bg-emerald-700 text-white font-semibold"
+                    ? "bg-emerald-700 font-semibold text-white"
                     : "text-emerald-100 hover:bg-emerald-800/50 hover:text-white"
                 }`}
               >
@@ -182,7 +355,7 @@ export const Sidebar: React.FC = () => {
                         : "text-emerald-200 group-hover:text-amber-300"
                     }
                   />
-                  <span>{item.label}</span>
+                  <span>{entry.label}</span>
                 </div>
                 {active && (
                   <ChevronRight size={14} className="text-amber-400" />

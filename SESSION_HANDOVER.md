@@ -1,7 +1,7 @@
 # ARBO Support Web App — Session Handover
 
 > **To the next AI agent**: Read this file first. It contains everything you need to continue this project without asking the user basic questions.
-> Last updated: September 29, 2026
+> Last updated: September 29, 2026 (sidebar reorganization and monitoring)
 
 ---
 
@@ -316,6 +316,18 @@ semi-annual, and annual. The final installment receives any rounding remainder.
   reasons, corrected receipt resubmission, and preserved dispute history
 - ✅ **Applicant form styling**: Loan, payment, and income/expense modal inputs
   use explicit Tailwind classes rather than an undefined `.input` selector
+- ✅ **Sidebar reorganization**: Admin, staff, and encoder navigation is grouped
+  by functional area with collapsible sections; ARB and ARBO Head navigation
+  remains intentionally flat.
+- ✅ **Beneficiary Monitor** (`/beneficiary-monitor`): Admin-only live profile
+  view combining CLOA, loans, payments, grants, income/expenses, trainings,
+  and audit activity with risk filters and responsive list/detail navigation.
+- ✅ **Farm Monitoring** (`/farm-monitoring`): Admin-only equipment and
+  materials view combining grants, resource-related loans, report status,
+  report links, filters, and CSV export.
+- ✅ **Mobile layout normalization**: Mobile navigation uses a fixed header,
+  page shells prevent horizontal overflow, and content receives mobile header
+  spacing while retaining desktop layouts.
 
 ---
 
@@ -331,7 +343,9 @@ semi-annual, and annual. The final installment receives any rounding remainder.
 
 ### Medium Priority
 
-- [ ] **Mobile responsiveness**: Test on actual mobile devices — the Sidebar and layout should work but hasn't been QA'd.
+- [ ] **Mobile responsiveness QA**: Run browser/device checks for the fixed
+  mobile header, grouped sidebar overlay, monitoring list/detail switching,
+  and long-table scrolling.
 - [ ] **Edge cases**: What happens when an encoder tries to encode a title that was already encoded? The duplicate check works, but the UI should handle it gracefully.
 - [ ] **Profitability Tracking**: Greyed out in sidebar — if client asks, implement as a separate module.
 - [ ] **Password reset**: Works via Firebase Auth, but there's no "reset success" landing page for the user after clicking the email link.

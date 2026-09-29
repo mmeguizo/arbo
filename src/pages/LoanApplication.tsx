@@ -803,9 +803,9 @@ export const LoanApplication: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-slate-50">
+      <div className="flex h-screen overflow-hidden bg-slate-50">
         <Sidebar />
-        <main className="flex-1 grid place-items-center">
+        <main className="flex-1 grid place-items-center pt-14 md:pt-0">
           <p className="text-sm text-slate-500">Loading loan records...</p>
         </main>
       </div>
@@ -813,9 +813,9 @@ export const LoanApplication: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+      <main className="flex-1 overflow-y-auto p-4 pt-14 md:p-6 md:pt-0 lg:p-8">
         <div className="mx-auto max-w-7xl space-y-6">
           <header className="flex flex-wrap items-center justify-between gap-3">
             <div>
