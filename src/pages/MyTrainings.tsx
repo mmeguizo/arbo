@@ -47,6 +47,9 @@ interface TrainingAck {
   reviewedNotes?: string;
 }
 
+const startOfLocalDay = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
 export const MyTrainings: React.FC = () => {
   const { user, profile } = useAuth();
   const [trainings, setTrainings] = useState<Training[]>([]);
@@ -217,22 +220,25 @@ export const MyTrainings: React.FC = () => {
   const upcomingTrainings = trainings.filter((t) => {
     const d = new Date(t.date);
     const now = new Date();
-    return d >= now && t.status === "ongoing";
+    return (
+      startOfLocalDay(d) >= startOfLocalDay(now) && t.status === "ongoing"
+    );
   });
 
   const pastTrainings = trainings.filter((t) => {
     const d = new Date(t.date);
     const now = new Date();
-    return d < now || t.status === "completed";
+    return (
+      startOfLocalDay(d) < startOfLocalDay(now) || t.status === "completed"
+    );
   });
 
   const daysUntil = (dateStr: string) => {
     const d = new Date(dateStr);
     const now = new Date();
-    const diff = Math.ceil(
-      (d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    return Math.round(
+      (startOfLocalDay(d) - startOfLocalDay(now)) / (1000 * 60 * 60 * 24),
     );
-    return diff;
   };
 
   return (
