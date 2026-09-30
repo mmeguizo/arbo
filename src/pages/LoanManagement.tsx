@@ -1119,7 +1119,7 @@ export const LoanManagement: React.FC = () => {
           <div className="flex flex-wrap gap-2 border-b border-slate-200">
             {[
               ["pending", `Pending (${pendingLoans.length})`],
-              ["active", "Active Loans"],
+              ["active", `Active Loans (${activeLoans.length})`],
               ["payments", `Payments (${reviewPayments.length})`],
               ["defaulters", `Defaulters (${defaulterLoans.length})`],
               ["reports", "Profitability"],
