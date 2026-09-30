@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Sidebar } from "../components/Sidebar";
+import { useNavigate } from "react-router-dom";
 import {
   addDoc,
   collection,
@@ -50,7 +51,20 @@ interface BorrowerProfile {
   uid: string;
   name: string;
   role: string;
+  contact: string;
+  barangay: string;
 }
+
+type LoanListStatus =
+  | "all"
+  | "pending_approval"
+  | "needs_review"
+  | "active"
+  | "defaulted"
+  | "completed"
+  | "rejected";
+
+type LoanSort = "newest" | "oldest" | "amount" | "balance";
 
 const money = (value: number) =>
   `₱${value.toLocaleString("en-PH", {
@@ -106,6 +120,7 @@ const buildPaymentSchedule = (
 
 export const LoanManagement: React.FC = () => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [payments, setPayments] = useState<LoanPayment[]>([]);
   const [incomeExpenses, setIncomeExpenses] = useState<LoanIncomeExpense[]>(
@@ -115,7 +130,25 @@ export const LoanManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>("pending");
   const [search, setSearch] = useState("");
+  const [loanStatusFilter, setLoanStatusFilter] =
+    useState<LoanListStatus>("pending_approval");
+  const [loanSort, setLoanSort] = useState<LoanSort>("newest");
+  const [loanPage, setLoanPage] = useState(1);
+  const [loanPageSize, setLoanPageSize] = useState<10 | 25 | 50>(10);
+  const [paymentSearch, setPaymentSearch] = useState("");
+  const [paymentSort, setPaymentSort] = useState<"newest" | "oldest">(
+    "newest",
+  );
+  const [defaulterSearch, setDefaulterSearch] = useState("");
+  const [defaulterSort, setDefaulterSort] = useState<"overdue" | "defaults">(
+    "overdue",
+  );
+  const [reportSearch, setReportSearch] = useState("");
+  const [reportSort, setReportSort] = useState<"net" | "name">("net");
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
+  const [selectedBorrowerId, setSelectedBorrowerId] = useState<string | null>(
+    null,
+  );
   const [selectedPayment, setSelectedPayment] = useState<LoanPayment | null>(
     null,
   );
@@ -183,6 +216,8 @@ export const LoanManagement: React.FC = () => {
               uid: item.id,
               name: String(data.name || "Unknown"),
               role: String(data.role || "arb"),
+              contact: String(data.contact || ""),
+              barangay: String(data.barangay || ""),
             };
           }),
         ),
@@ -299,24 +334,177 @@ export const LoanManagement: React.FC = () => {
     doc(db, "loans", loan.firestoreId || loan.id);
   const filteredLoans = useMemo(() => {
     const normalized = search.trim().toLowerCase();
-    const tabLoans =
-      activeTab === "pending"
-        ? pendingLoans
-        : activeTab === "active"
-          ? activeLoans
-          : activeTab === "archive"
-            ? loans.filter((loan) =>
-                ["completed", "defaulted", "rejected"].includes(loan.status),
-              )
-            : loans;
-    if (!normalized) return tabLoans;
-    return tabLoans.filter(
-      (loan) =>
-        loan.id.toLowerCase().includes(normalized) ||
-        loan.applicantName.toLowerCase().includes(normalized) ||
-        loan.purpose.toLowerCase().includes(normalized),
-    );
-  }, [activeTab, loans, search, pendingLoans, activeLoans]);
+    return loans
+      .filter((loan) => {
+        if (loanStatusFilter === "all") return true;
+        if (loanStatusFilter === "defaulted") {
+          return defaulterLoans.some((candidate) => candidate.id === loan.id);
+        }
+        return loan.status === loanStatusFilter;
+      })
+      .filter((loan) => {
+        if (!normalized) return true;
+        return (
+          loan.id.toLowerCase().includes(normalized) ||
+          loan.applicantName.toLowerCase().includes(normalized) ||
+          (loan.cooperativeName || "").toLowerCase().includes(normalized) ||
+          loan.purpose.toLowerCase().includes(normalized)
+        );
+      })
+      .sort((a, b) => {
+        if (loanSort === "oldest") {
+          return (
+            new Date(a.createdAt || 0).getTime() -
+            new Date(b.createdAt || 0).getTime()
+          );
+        }
+        if (loanSort === "amount") {
+          return (b.principalAmount || 0) - (a.principalAmount || 0);
+        }
+        if (loanSort === "balance") {
+          return (b.remainingBalance || 0) - (a.remainingBalance || 0);
+        }
+        return (
+          new Date(b.createdAt || 0).getTime() -
+          new Date(a.createdAt || 0).getTime()
+        );
+      });
+  }, [defaulterLoans, loanSort, loanStatusFilter, loans, search]);
+  const loanTotalPages = Math.max(
+    1,
+    Math.ceil(filteredLoans.length / loanPageSize),
+  );
+  const visibleLoans = filteredLoans.slice(
+    (loanPage - 1) * loanPageSize,
+    loanPage * loanPageSize,
+  );
+  useEffect(() => {
+    setLoanPage(1);
+  }, [loanPageSize, loanSort, loanStatusFilter, search]);
+
+  const filteredReviewPayments = useMemo(() => {
+    const normalized = paymentSearch.trim().toLowerCase();
+    return reviewPayments
+      .filter((payment) => {
+        if (!normalized) return true;
+        const loan = loans.find((candidate) => candidate.id === payment.loanId);
+        return (
+          payment.loanId.toLowerCase().includes(normalized) ||
+          loan?.applicantName.toLowerCase().includes(normalized)
+        );
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.createdAt || a.dueDate || 0).getTime();
+        const bTime = new Date(b.createdAt || b.dueDate || 0).getTime();
+        return paymentSort === "oldest" ? aTime - bTime : bTime - aTime;
+      });
+  }, [loans, paymentSearch, paymentSort, reviewPayments]);
+
+  const filteredDefaulterLoans = useMemo(() => {
+    const normalized = defaulterSearch.trim().toLowerCase();
+    return [...defaulterLoans]
+      .filter(
+        (loan) =>
+          !normalized ||
+          loan.id.toLowerCase().includes(normalized) ||
+          loan.applicantName.toLowerCase().includes(normalized) ||
+          (loan.cooperativeName || "").toLowerCase().includes(normalized),
+      )
+      .sort((a, b) => {
+        if (defaulterSort === "defaults") {
+          return (b.defaultedPayments || 0) - (a.defaultedPayments || 0);
+        }
+        const overdueDays = (loan: Loan) => {
+          const firstOverdue = payments
+            .filter(
+              (payment) =>
+                payment.loanId === loan.id && payment.status === "overdue",
+            )
+            .sort((x, y) => x.dueDate.localeCompare(y.dueDate))[0];
+          return firstOverdue
+            ? Date.now() - new Date(firstOverdue.dueDate).getTime()
+            : 0;
+        };
+        return overdueDays(b) - overdueDays(a);
+      });
+  }, [defaulterSearch, defaulterSort, defaulterLoans, payments]);
+  const selectedBorrower = borrowers.find(
+    (borrower) => borrower.uid === selectedBorrowerId,
+  );
+  const dossierLoans = selectedBorrowerId
+    ? loans.filter(
+        (loan) =>
+          (loan.applicantType === "individual" &&
+            loan.applicantId === selectedBorrowerId) ||
+          (loan.applicantType === "cooperative" &&
+            loan.memberAllocations?.some(
+              (allocation) => allocation.memberId === selectedBorrowerId,
+            )),
+      )
+    : [];
+  const dossierLoanIds = new Set(dossierLoans.map((loan) => loan.id));
+  const dossierPayments = selectedBorrowerId
+    ? payments.filter(
+        (payment) =>
+          dossierLoanIds.has(payment.loanId) &&
+          (payment.memberId === selectedBorrowerId ||
+            payment.applicantId === selectedBorrowerId),
+      )
+    : [];
+  const dossierEntries = selectedBorrowerId
+    ? incomeExpenses.filter((entry) => entry.userId === selectedBorrowerId)
+    : [];
+  const dossierBorrowed = dossierLoans.reduce((sum, loan) => {
+    if (loan.applicantType === "cooperative") {
+      return (
+        sum +
+        (loan.memberAllocations?.find(
+          (allocation) => allocation.memberId === selectedBorrowerId,
+        )?.amount || 0)
+      );
+    }
+    return sum + (loan.principalAmount || 0);
+  }, 0);
+  const dossierRepaid = dossierPayments.reduce(
+    (sum, payment) =>
+      sum +
+      (["paid", "partial"].includes(payment.status)
+        ? payment.amountPaid || 0
+        : 0),
+    0,
+  );
+  const dossierOutstanding = dossierLoans.reduce(
+    (sum, loan) =>
+      sum +
+      (loan.applicantType === "cooperative"
+        ? Math.max(
+            0,
+            (loan.memberAllocations?.find(
+              (allocation) => allocation.memberId === selectedBorrowerId,
+            )?.amount || 0) - dossierPayments
+              .filter((payment) => payment.loanId === loan.id)
+              .reduce(
+                (paid, payment) =>
+                  paid +
+                  (["paid", "partial"].includes(payment.status)
+                    ? payment.amountPaid || 0
+                    : 0),
+                0,
+              ),
+          )
+        : loan.remainingBalance || 0),
+    0,
+  );
+  const dossierDefaults = dossierLoans.reduce(
+    (sum, loan) => sum + (loan.defaultedPayments || 0),
+    0,
+  );
+  const dossierIncome = dossierEntries
+    .filter((entry) => entry.type === "income")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const dossierExpenses = dossierEntries
+    .filter((entry) => entry.type === "expense")
+    .reduce((sum, entry) => sum + entry.amount, 0);
 
   const notifyApplicant = async (
     loan: Loan,
@@ -937,7 +1125,18 @@ export const LoanManagement: React.FC = () => {
               ["reports", "Profitability"],
               ["archive", "Archive"],
             ].map(([id, label]) => (
-              <button key={id} onClick={() => setActiveTab(id as TabId)} className={`border-b-2 px-3 py-3 text-xs font-bold ${activeTab === id ? "border-emerald-700 text-emerald-800" : "border-transparent text-slate-500"}`}>{label}</button>
+              <button
+                key={id}
+                onClick={() => {
+                  setActiveTab(id as TabId);
+                  if (id === "pending") setLoanStatusFilter("pending_approval");
+                  if (id === "active") setLoanStatusFilter("active");
+                  if (id === "archive") setLoanStatusFilter("all");
+                }}
+                className={`border-b-2 px-3 py-3 text-xs font-bold ${activeTab === id ? "border-emerald-700 text-emerald-800" : "border-transparent text-slate-500"}`}
+              >
+                {label}
+              </button>
             ))}
           </div>
 
@@ -947,21 +1146,143 @@ export const LoanManagement: React.FC = () => {
               incomeExpenses={incomeExpenses}
               borrowers={borrowers}
               payments={payments}
+              search={reportSearch}
+              sort={reportSort}
+              onSearchChange={setReportSearch}
+              onSortChange={setReportSort}
             />
           ) : activeTab === "payments" ? (
-            <PaymentsTable payments={reviewPayments} loans={loans} onSelect={openPaymentReview} />
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[220px] flex-1">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-2.5 text-slate-400"
+                  />
+                  <input
+                    value={paymentSearch}
+                    onChange={(event) => setPaymentSearch(event.target.value)}
+                    placeholder="Search borrower or loan ID"
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-emerald-600"
+                  />
+                </div>
+                <select
+                  value={paymentSort}
+                  onChange={(event) =>
+                    setPaymentSort(event.target.value as "newest" | "oldest")
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="newest">Newest Payment</option>
+                  <option value="oldest">Oldest Payment</option>
+                </select>
+              </div>
+              <PaymentsTable
+                payments={filteredReviewPayments}
+                loans={loans}
+                onSelect={openPaymentReview}
+              />
+            </div>
           ) : activeTab === "defaulters" ? (
-            <DefaultersTable
-              loans={defaulterLoans}
-              payments={payments}
-              onReminder={(loan) => void sendReminder(loan)}
-              onDefault={(loan) => void markDefaulted(loan)}
-            />
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[220px] flex-1">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-2.5 text-slate-400"
+                  />
+                  <input
+                    value={defaulterSearch}
+                    onChange={(event) => setDefaulterSearch(event.target.value)}
+                    placeholder="Search borrower, cooperative, or loan ID"
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-emerald-600"
+                  />
+                </div>
+                <select
+                  value={defaulterSort}
+                  onChange={(event) =>
+                    setDefaulterSort(event.target.value as "overdue" | "defaults")
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="overdue">Most Overdue Days</option>
+                  <option value="defaults">Most Defaults</option>
+                </select>
+              </div>
+              <DefaultersTable
+                loans={filteredDefaulterLoans}
+                payments={payments}
+                onReminder={(loan) => void sendReminder(loan)}
+                onDefault={(loan) => void markDefaulted(loan)}
+              />
+            </div>
           ) : (
             <div className="space-y-3">
-              <div className="relative max-w-md"><Search size={16} className="absolute left-3 top-2.5 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search loan ID, applicant, or purpose" className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-emerald-600" /></div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[220px] flex-1">
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-2.5 text-slate-400"
+                  />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search borrower, loan ID, cooperative, or purpose"
+                    className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-emerald-600"
+                  />
+                </div>
+                <select
+                  value={loanSort}
+                  onChange={(event) => setLoanSort(event.target.value as LoanSort)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="amount">Highest Amount</option>
+                  <option value="balance">Highest Remaining Balance</option>
+                </select>
+                <select
+                  value={loanPageSize}
+                  onChange={(event) =>
+                    setLoanPageSize(Number(event.target.value) as 10 | 25 | 50)
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["all", "All"],
+                    ["pending_approval", "Pending Approval"],
+                    ["needs_review", "Needs Review"],
+                    ["active", "Active"],
+                    ["defaulted", "Defaulters"],
+                    ["completed", "Completed"],
+                    ["rejected", "Rejected"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    onClick={() => {
+                      setLoanStatusFilter(value);
+                      setActiveTab("pending");
+                    }}
+                    className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${
+                      loanStatusFilter === value
+                        ? "border-emerald-800 bg-emerald-800 text-white"
+                        : "border-slate-200 bg-white text-slate-600"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               {filteredLoans.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-400">No loans in this view.</div>}
-              {filteredLoans.map((loan) => (
+              {visibleLoans.map((loan) => (
                 <LoanRow
                   key={loan.id}
                   loan={loan}
@@ -983,14 +1304,160 @@ export const LoanManagement: React.FC = () => {
                   onDefault={() => void markDefaulted(loan)}
                   onEdit={() => openEditTerms(loan)}
                   onComplete={() => void completeLoan(loan)}
+                  onBorrowerClick={() => setSelectedBorrowerId(loan.applicantId)}
                 />
               ))}
+              {filteredLoans.length > 0 && (
+                <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs text-slate-500">
+                    Page {Math.min(loanPage, loanTotalPages)} of {loanTotalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setLoanPage((page) => Math.max(1, page - 1))}
+                      disabled={loanPage <= 1}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-[10px] font-bold text-slate-600 disabled:opacity-40"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() =>
+                        setLoanPage((page) => Math.min(loanTotalPages, page + 1))
+                      }
+                      disabled={loanPage >= loanTotalPages}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-[10px] font-bold text-slate-600 disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {error && <p className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">{error}</p>}
         </div>
       </main>
 
+      {selectedBorrowerId && selectedBorrower && (
+        <Modal
+          title={`${selectedBorrower.name} — Financial Dossier`}
+          onClose={() => setSelectedBorrowerId(null)}
+        >
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-indigo-50 p-3">
+              <div className="text-xs text-indigo-900">
+                <p className="font-bold">{selectedBorrower.name}</p>
+                <p className="mt-1 text-indigo-700">
+                  {selectedBorrower.contact || "Contact not available"} ·{" "}
+                  {selectedBorrower.barangay || "Barangay not available"}
+                </p>
+              </div>
+              <button
+                onClick={() => navigate("/search")}
+                className="rounded-lg bg-indigo-700 px-3 py-2 text-[10px] font-bold text-white"
+              >
+                View CLOA / Land Record
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Kpi label="Lifetime Borrowed" value={money(dossierBorrowed)} icon={<Landmark size={15} />} />
+              <Kpi label="Total Repaid" value={money(dossierRepaid)} icon={<CheckCircle size={15} />} />
+              <Kpi label="Outstanding Debt" value={money(dossierOutstanding)} icon={<ShieldAlert size={15} />} />
+              <Kpi label="Defaults" value={String(dossierDefaults)} icon={<AlertTriangle size={15} />} />
+            </div>
+            <div>
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                Past Loans
+              </h3>
+              <div className="space-y-2">
+                {dossierLoans.length === 0 ? (
+                  <p className="text-xs italic text-slate-400">No loans found.</p>
+                ) : (
+                  dossierLoans.map((loan) => {
+                    const allocation =
+                      loan.memberAllocations?.find(
+                        (item) => item.memberId === selectedBorrowerId,
+                      )?.amount || 0;
+                    return (
+                      <div
+                        key={loan.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3 text-xs"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-800">{loan.id}</p>
+                          <p className="text-[10px] text-slate-500">
+                            {loan.applicantType === "cooperative"
+                              ? `Cooperative allocation: ${money(allocation)}`
+                              : loan.purpose || "Individual loan"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-indigo-700">
+                            {money(loan.remainingBalance)} remaining
+                          </p>
+                          <p className={`text-[10px] font-bold ${LOAN_STATUS_CONFIG[loan.status].color}`}>
+                            {LOAN_STATUS_CONFIG[loan.status].label}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+            <div>
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                Income vs Expenses
+              </h3>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-lg bg-emerald-50 p-3 text-xs">
+                  <p className="font-bold text-emerald-700">Income</p>
+                  <p className="mt-1 text-lg font-extrabold text-emerald-800">
+                    {money(dossierIncome)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-100 p-3 text-xs">
+                  <p className="font-bold text-slate-600">Expenses</p>
+                  <p className="mt-1 text-lg font-extrabold text-slate-800">
+                    {money(dossierExpenses)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-indigo-50 p-3 text-xs">
+                  <p className="font-bold text-indigo-700">Net Profit</p>
+                  <p className={`mt-1 text-lg font-extrabold ${dossierIncome - dossierExpenses >= 0 ? "text-indigo-800" : "text-red-700"}`}>
+                    {money(dossierIncome - dossierExpenses)}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                Recent Payments
+              </h3>
+              <div className="space-y-2">
+                {dossierPayments.slice(0, 10).map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-3 text-xs"
+                  >
+                    <span>
+                      {payment.loanId} · Payment #{payment.paymentNumber}
+                    </span>
+                    <span className="font-bold">
+                      {money(payment.amountPaid)} · {payment.status}
+                    </span>
+                  </div>
+                ))}
+                {dossierPayments.length === 0 && (
+                  <p className="text-xs italic text-slate-400">
+                    No payment history found.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
       {showApproval && selectedLoan && (
         <Modal title="Approve Loan" onClose={closeApprovalModal}>
           <form onSubmit={approveLoan} className="space-y-4">
@@ -1102,6 +1569,7 @@ const LoanRow: React.FC<{
   onDefault: () => void;
   onEdit: () => void;
   onComplete: () => void;
+  onBorrowerClick: () => void;
 }> = ({
   loan,
   payments,
@@ -1112,6 +1580,7 @@ const LoanRow: React.FC<{
   onDefault,
   onEdit,
   onComplete,
+  onBorrowerClick,
 }) => {
   const status = LOAN_STATUS_CONFIG[loan.status];
   const scheduledPayments = payments.filter(
@@ -1122,7 +1591,15 @@ const LoanRow: React.FC<{
       <button onClick={onExpand} className="flex w-full flex-wrap items-center justify-between gap-3 text-left">
         <div>
           <p className="text-xs font-bold text-emerald-800">{loan.id}</p>
-          <h2 className="font-bold text-slate-900">{loan.applicantName}</h2>
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onBorrowerClick();
+            }}
+            className="text-left font-bold text-slate-900 hover:text-indigo-700 hover:underline"
+          >
+            {loan.applicantName}
+          </button>
           <p className="text-xs text-slate-500">
             {loan.purpose} · {money(loan.principalAmount)} ·{" "}
             {FREQUENCY_LABELS[loan.paymentFrequency]}
@@ -1202,18 +1679,86 @@ const ProfitabilityReport: React.FC<{
   incomeExpenses: LoanIncomeExpense[];
   borrowers: BorrowerProfile[];
   payments: LoanPayment[];
-}> = ({ loans, incomeExpenses, borrowers, payments }) => {
-  const rows = borrowers.map((borrower) => {
+  search: string;
+  sort: "net" | "name";
+  onSearchChange: (value: string) => void;
+  onSortChange: (value: "net" | "name") => void;
+}> = ({
+  loans,
+  incomeExpenses,
+  borrowers,
+  payments,
+  search,
+  sort,
+  onSearchChange,
+  onSortChange,
+}) => {
+  const rows = borrowers
+    .map((borrower) => {
     const entries = incomeExpenses.filter((entry) => entry.userId === borrower.uid);
     const income = entries.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + entry.amount, 0);
     const expenses = entries.filter((entry) => entry.type === "expense").reduce((sum, entry) => sum + entry.amount, 0);
     const balance = loans.filter((loan) => loan.applicantId === borrower.uid && loan.status === "active").reduce((sum, loan) => sum + loan.remainingBalance, 0);
     return { borrower, income, expenses, net: income - expenses, balance };
-  }).sort((a, b) => a.net - b.net);
+    })
+    .filter((row) => row.borrower.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) =>
+      sort === "name"
+        ? a.borrower.name.localeCompare(b.borrower.name)
+        : a.net - b.net,
+    );
   const totalIncome = rows.reduce((sum, row) => sum + row.income, 0);
   const totalExpenses = rows.reduce((sum, row) => sum + row.expenses, 0);
   const verified = payments.filter((payment) => payment.status === "paid").reduce((sum, payment) => sum + payment.amountPaid, 0);
-  return <div className="space-y-4"><div className="grid gap-4 md:grid-cols-3"><Kpi label="ARB Income" value={money(totalIncome)} icon={<BarChart3 size={17} />} /><Kpi label="ARB Expenses" value={money(totalExpenses)} icon={<FileText size={17} />} /><Kpi label="Verified Collections" value={money(verified)} icon={<CheckCircle size={17} />} /></div><div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-400"><tr><th className="p-3">ARB</th><th className="p-3">Income</th><th className="p-3">Expenses</th><th className="p-3">Net</th><th className="p-3">Active Loan Balance</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.map((row) => <tr key={row.borrower.uid}><td className="p-3 font-bold">{row.borrower.name}</td><td className="p-3">{money(row.income)}</td><td className="p-3">{money(row.expenses)}</td><td className={`p-3 font-bold ${row.net >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(row.net)}</td><td className="p-3">{money(row.balance)}</td></tr>)}{rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400">No ARB financial data.</td></tr>}</tbody></table></div></div>;
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Kpi label="ARB Income" value={money(totalIncome)} icon={<BarChart3 size={17} />} />
+        <Kpi label="ARB Expenses" value={money(totalExpenses)} icon={<FileText size={17} />} />
+        <Kpi label="Verified Collections" value={money(verified)} icon={<CheckCircle size={17} />} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+          <input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search borrower name"
+            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-emerald-600"
+          />
+        </div>
+        <select
+          value={sort}
+          onChange={(event) => onSortChange(event.target.value as "net" | "name")}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+        >
+          <option value="net">Lowest Net Profit First</option>
+          <option value="name">Borrower Name</option>
+        </select>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 text-[10px] uppercase text-slate-400">
+            <tr><th className="p-3">ARB</th><th className="p-3">Income</th><th className="p-3">Expenses</th><th className="p-3">Net</th><th className="p-3">Active Loan Balance</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((row) => (
+              <tr key={row.borrower.uid}>
+                <td className="p-3 font-bold">{row.borrower.name}</td>
+                <td className="p-3">{money(row.income)}</td>
+                <td className="p-3">{money(row.expenses)}</td>
+                <td className={`p-3 font-bold ${row.net >= 0 ? "text-emerald-700" : "text-red-700"}`}>{money(row.net)}</td>
+                <td className="p-3">{money(row.balance)}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={5} className="p-8 text-center text-slate-400">No ARB financial data.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 };
 
 const Info: React.FC<{ loan: Loan }> = ({ loan }) => (

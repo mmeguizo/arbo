@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Sidebar } from "../components/Sidebar";
 import {
@@ -22,6 +22,7 @@ import {
   type PaymentFrequency,
   type Loan,
   type LoanPayment,
+  type LoanIncomeExpense,
   type CooperativeLoanAllocation,
 } from "../types/loan";
 import {
@@ -37,6 +38,7 @@ import {
   XCircle,
   Clock,
   Calendar,
+  Search,
   ChevronDown,
   ChevronUp,
   Link as LinkIcon,
@@ -329,6 +331,11 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
   const [acks, setAcks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedTraining, setExpandedTraining] = useState<string | null>(null);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberStatusFilter, setMemberStatusFilter] = useState<
+    "all" | "acknowledged" | "pending" | "declined"
+  >("all");
+  const [nudgingAll, setNudgingAll] = useState(false);
 
   useEffect(() => {
     const unsubT = onSnapshot(collection(db, "trainings"), (snap) => {
@@ -339,6 +346,7 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
         const assignedIds: string[] = data.assignedUserIds || [];
         const assignedCoops: string[] = data.assignedCoopIds || [];
         if (
+          data.assignedTo === "all" ||
           assignedIds.some((id: string) => memberIds.has(id)) ||
           assignedCoops.includes(arboId)
         ) {
@@ -386,6 +394,35 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
     alert("Nudge sent!");
   };
 
+  const sendNudgeAll = async (
+    pendingMembers: CoopMember[],
+    trainingName: string,
+  ) => {
+    if (pendingMembers.length === 0) return;
+    setNudgingAll(true);
+    try {
+      await Promise.all(
+        pendingMembers.map((member) =>
+          addDoc(collection(db, "notifications"), {
+            recipientId: member.userId,
+            recipientRole: "arb",
+            type: "training_reminder",
+            title: `Please Acknowledge: ${trainingName}`,
+            message: `Your ARBO head reminds you to acknowledge your attendance for "${trainingName}".`,
+            applicationId: null,
+            read: false,
+            createdAt: new Date().toISOString(),
+          }),
+        ),
+      );
+      alert(`Nudges sent to ${pendingMembers.length} pending member(s).`);
+    } catch (error) {
+      console.error("Failed to nudge pending training members", error);
+    } finally {
+      setNudgingAll(false);
+    }
+  };
+
   if (loading)
     return (
       <div className="p-8 text-center text-xs text-slate-400">
@@ -418,6 +455,19 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
         const declinedMembers = members.filter(
           (m) => getAckStatus(getAck(t.id, m.userId)) === "declined",
         );
+        const engagementPercent =
+          Math.round((ackMembers.length / members.length) * 100) || 0;
+        const filteredMembers = members.filter((member) => {
+          const status = getAckStatus(getAck(t.id, member.userId));
+          const matchesStatus =
+            memberStatusFilter === "all" || status === memberStatusFilter;
+          const matchesSearch =
+            !memberSearch.trim() ||
+            member.userName
+              .toLowerCase()
+              .includes(memberSearch.trim().toLowerCase());
+          return matchesStatus && matchesSearch;
+        });
         const isExpanded = expandedTraining === t.id;
         return (
           <div
@@ -463,6 +513,21 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
                   <XCircle size={12} /> {declinedMembers.length} Declined
                 </span>
               </div>
+              <div className="mt-3">
+                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                  <span>
+                    {ackMembers.length} of {members.length} members
+                    acknowledged ({engagementPercent}%)
+                  </span>
+                  <span>{engagementPercent}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-emerald-600 transition-all"
+                    style={{ width: `${engagementPercent}%` }}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Expanded detail */}
@@ -498,11 +563,64 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
 
                 {/* All members with ack status */}
                 <div>
-                  <p className="text-xs font-bold text-slate-700 mb-2">
-                    Acknowledgement Status ({members.length} members)
-                  </p>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <p className="mr-auto text-xs font-bold text-slate-700">
+                      Acknowledgement Status ({members.length} members)
+                    </p>
+                    {pendingMembers.length > 0 && (
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void sendNudgeAll(pendingMembers, t.name);
+                        }}
+                        disabled={nudgingAll}
+                        className="rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[10px] font-bold text-white disabled:opacity-50"
+                      >
+                        {nudgingAll ? "Sending..." : "Nudge All Pending"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <div className="relative min-w-[180px] flex-1">
+                      <Search
+                        size={12}
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+                      <input
+                        type="search"
+                        value={memberSearch}
+                        onChange={(event) => setMemberSearch(event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        placeholder="Search member..."
+                        className="block w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-[10px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    {(
+                      [
+                        ["all", `All (${members.length})`],
+                        ["acknowledged", `Attending (${ackMembers.length})`],
+                        ["pending", `Pending (${pendingMembers.length})`],
+                        ["declined", `Declined (${declinedMembers.length})`],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setMemberStatusFilter(value);
+                        }}
+                        className={`rounded-lg border px-2 py-1.5 text-[10px] font-bold ${
+                          memberStatusFilter === value
+                            ? "border-emerald-800 bg-emerald-800 text-white"
+                            : "border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="space-y-1.5">
-                    {members.map((m) => {
+                    {filteredMembers.map((m) => {
                       const ack = getAck(t.id, m.userId);
                       const ackStatus = getAckStatus(ack);
                       return (
@@ -557,6 +675,11 @@ const TrainingsTab: React.FC<{ arboId: string; members: CoopMember[] }> = ({
                         </div>
                       );
                     })}
+                    {filteredMembers.length === 0 && (
+                      <p className="py-3 text-center text-xs italic text-slate-400">
+                        No members match this search or filter.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -695,6 +818,10 @@ const LoansTab: React.FC<{
 }) => {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [payments, setPayments] = useState<LoanPayment[]>([]);
+  const [incomeExpenses, setIncomeExpenses] = useState<LoanIncomeExpense[]>([]);
+  const [borrowerProfiles, setBorrowerProfiles] = useState<
+    Record<string, { name: string; contact: string; barangay: string }>
+  >({});
   const [loading, setLoading] = useState(true);
   const [expandedLoanId, setExpandedLoanId] = useState<string | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -714,6 +841,12 @@ const LoansTab: React.FC<{
   const [coopResubmissionNotes, setCoopResubmissionNotes] = useState("");
   const [coopError, setCoopError] = useState<string | null>(null);
   const [coopSubmitting, setCoopSubmitting] = useState(false);
+  const [loanSearch, setLoanSearch] = useState("");
+  const [loanSort, setLoanSort] = useState<
+    "newest" | "balance" | "defaults"
+  >("newest");
+  const [loanPage, setLoanPage] = useState(1);
+  const [dossierMemberId, setDossierMemberId] = useState<string | null>(null);
 
   const loanParticipants: CoopMember[] = [
     {
@@ -768,9 +901,36 @@ const LoansTab: React.FC<{
         ),
       );
     });
+    const unsubLedgers = onSnapshot(
+      collection(db, "loanIncomeExpenses"),
+      (snap) => {
+        setIncomeExpenses(
+          snap.docs.map(
+            (d) => ({ id: d.id, ...d.data() }) as LoanIncomeExpense,
+          ),
+        );
+      },
+    );
+    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
+      const profiles: Record<
+        string,
+        { name: string; contact: string; barangay: string }
+      > = {};
+      snap.forEach((userDoc) => {
+        const data = userDoc.data();
+        profiles[userDoc.id] = {
+          name: data.name || "Unknown",
+          contact: data.contact || "",
+          barangay: data.barangay || "",
+        };
+      });
+      setBorrowerProfiles(profiles);
+    });
     return () => {
       unsub();
       unsubPayments();
+      unsubLedgers();
+      unsubUsers();
     };
   }, [arboId, members]);
 
@@ -798,6 +958,128 @@ const LoansTab: React.FC<{
       ? "You (ARBO Head)"
       : members.find((member) => member.userId === applicantId)?.userName ||
         "Member";
+  const activeMemberLoans = loans.filter((loan) => loan.status === "active");
+  const totalPortfolioBalance = activeMemberLoans.reduce(
+    (sum, loan) => sum + (loan.remainingBalance || 0),
+    0,
+  );
+  const totalPaymentRecords = payments.filter(
+    (payment) =>
+      loans.some((loan) => loan.id === payment.loanId) &&
+      !payment.isEarlyRepayment,
+  ).length;
+  const totalOnTimePayments = loans.reduce(
+    (sum, loan) => sum + (loan.onTimePayments || 0),
+    0,
+  );
+  const onTimeRate = totalPaymentRecords
+    ? Math.round((totalOnTimePayments / totalPaymentRecords) * 100)
+    : 0;
+  const delinquentPayments = payments.filter(
+    (payment) =>
+      loans.some((loan) => loan.id === payment.loanId) &&
+      (payment.status === "overdue" ||
+        loans.find((loan) => loan.id === payment.loanId)?.status === "defaulted"),
+  );
+  const delinquentLoanIds = new Set(
+    delinquentPayments.map((payment) => payment.loanId),
+  );
+  const delinquentAmount = delinquentPayments.reduce(
+    (sum, payment) =>
+      sum + Math.max(0, (payment.amountDue || 0) - (payment.amountPaid || 0)),
+    0,
+  );
+  const sortedMemberLoans = useMemo(() => {
+    const term = loanSearch.trim().toLowerCase();
+    return loans
+      .filter((loan) => {
+        if (!term) return true;
+        return (
+          memberName(loan.applicantId).toLowerCase().includes(term) ||
+          loan.id.toLowerCase().includes(term) ||
+          (loan.cooperativeName || "").toLowerCase().includes(term)
+        );
+      })
+      .sort((a, b) => {
+        if (loanSort === "balance") {
+          return (b.remainingBalance || 0) - (a.remainingBalance || 0);
+        }
+        if (loanSort === "defaults") {
+          return (b.defaultedPayments || 0) - (a.defaultedPayments || 0);
+        }
+        return (
+          new Date(b.createdAt || 0).getTime() -
+          new Date(a.createdAt || 0).getTime()
+        );
+      });
+  }, [loans, loanSearch, loanSort, members, verifierId]);
+  const loanPageSize = 10;
+  const loanTotalPages = Math.max(
+    1,
+    Math.ceil(sortedMemberLoans.length / loanPageSize),
+  );
+  const visibleMemberLoans = sortedMemberLoans.slice(
+    (loanPage - 1) * loanPageSize,
+    loanPage * loanPageSize,
+  );
+  const dossierLoans = dossierMemberId
+    ? loans.filter(
+        (loan) =>
+          (loan.applicantType === "individual" &&
+            loan.applicantId === dossierMemberId) ||
+          (loan.applicantType === "cooperative" &&
+            loan.memberAllocations?.some(
+              (allocation) => allocation.memberId === dossierMemberId,
+            )),
+      )
+    : [];
+  const dossierLoanIds = new Set(dossierLoans.map((loan) => loan.id));
+  const dossierMember = dossierMemberId
+    ? members.find((member) => member.userId === dossierMemberId)
+    : null;
+  const dossierProfile = dossierMemberId
+    ? borrowerProfiles[dossierMemberId]
+    : undefined;
+  const dossierPayments = dossierMemberId
+    ? payments.filter(
+        (payment) =>
+          payment.memberId === dossierMemberId ||
+          (payment.applicantId === dossierMemberId &&
+            (!payment.memberId || payment.memberId === dossierMemberId)),
+      )
+    : [];
+  const dossierLedger = dossierMemberId
+    ? incomeExpenses.filter((entry) => entry.userId === dossierMemberId)
+    : [];
+  const dossierTotalBorrowed = dossierLoans.reduce((sum, loan) => {
+    if (loan.applicantType === "cooperative") {
+      return (
+        sum +
+        (loan.memberAllocations?.find(
+          (allocation) => allocation.memberId === dossierMemberId,
+        )?.amount || 0)
+      );
+    }
+    return sum + (loan.principalAmount || 0);
+  }, 0);
+  const dossierTotalRepaid = dossierPayments.reduce(
+    (sum, payment) =>
+      sum +
+      (["paid", "partial"].includes(payment.status)
+        ? payment.amountPaid || 0
+        : 0),
+    0,
+  );
+  const dossierIncome = dossierLedger
+    .filter((entry) => entry.type === "income")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const dossierExpenses = dossierLedger
+    .filter((entry) => entry.type === "expense")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const dossierDefaults = dossierLoans.reduce(
+    (sum, loan) => sum + (loan.defaultedPayments || 0),
+    0,
+  );
   const currentAllocationTotal = loanParticipants.reduce(
     (sum, member) => sum + Number(coopAllocations[member.userId] || 0),
     0,
@@ -1158,8 +1440,93 @@ const LoansTab: React.FC<{
           <p className="text-[9px] text-slate-400 uppercase">Collected</p>
         </div>
       </div>
+      <div className="mb-4 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">
+              Cooperative Financial Health
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              A quick view of active member loan performance.
+            </p>
+          </div>
+          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700 shadow-sm">
+            {onTimeRate}% on-time
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl bg-white p-3">
+            <p className="text-[9px] font-bold uppercase text-slate-400">
+              Active Member Loans
+            </p>
+            <p className="mt-1 text-xl font-extrabold text-indigo-900">
+              {activeMemberLoans.length}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white p-3">
+            <p className="text-[9px] font-bold uppercase text-slate-400">
+              Portfolio Balance
+            </p>
+            <p className="mt-1 text-xl font-extrabold text-indigo-900">
+              ₱{totalPortfolioBalance.toLocaleString()}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white p-3">
+            <p className="text-[9px] font-bold uppercase text-slate-400">
+              Payment Records
+            </p>
+            <p className="mt-1 text-xl font-extrabold text-emerald-700">
+              {totalPaymentRecords}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white p-3">
+            <p className="text-[9px] font-bold uppercase text-slate-400">
+              Delinquent Amount
+            </p>
+            <p className="mt-1 text-xl font-extrabold text-red-700">
+              ₱{delinquentAmount.toLocaleString()}
+            </p>
+            <p className="text-[10px] text-red-600">
+              {delinquentLoanIds.size} loan(s)
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search
+            size={14}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            type="search"
+            value={loanSearch}
+            onChange={(event) => {
+              setLoanSearch(event.target.value);
+              setLoanPage(1);
+            }}
+            placeholder="Search member, loan ID, or cooperative..."
+            className="block w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+        </div>
+        <select
+          value={loanSort}
+          onChange={(event) => {
+            setLoanSort(
+              event.target.value as "newest" | "balance" | "defaults",
+            );
+            setLoanPage(1);
+          }}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+        >
+          <option value="newest">Newest First</option>
+          <option value="balance">Highest Remaining Balance</option>
+          <option value="defaults">Most Defaults</option>
+        </select>
+      </div>
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[9px] uppercase font-bold text-slate-400">
             <tr>
               <th className="px-4 py-3 text-left">Member</th>
@@ -1172,7 +1539,7 @@ const LoansTab: React.FC<{
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loans.map((loan) => {
+            {visibleMemberLoans.map((loan) => {
               const loanPayments = payments
                 .filter((payment) => payment.loanId === loan.id)
                 .sort((a, b) => a.paymentNumber - b.paymentNumber);
@@ -1181,7 +1548,12 @@ const LoansTab: React.FC<{
                 <React.Fragment key={loan.id}>
                   <tr className="hover:bg-slate-50">
                     <td className="px-4 py-3 text-xs font-bold text-slate-700">
-                      {memberName(loan.applicantId)}
+                      <button
+                        onClick={() => setDossierMemberId(loan.applicantId)}
+                        className="text-left text-indigo-700 hover:underline"
+                      >
+                        {memberName(loan.applicantId)}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-800">
                       ₱{loan.principalAmount.toLocaleString()}
@@ -1275,16 +1647,245 @@ const LoansTab: React.FC<{
                 </React.Fragment>
               );
             })}
-            {loans.length === 0 && (
+            {sortedMemberLoans.length === 0 && (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-slate-400">
-                  No cooperative loans yet.
+                  {loanSearch
+                    ? "No loans match your search."
+                    : "No cooperative loans yet."}
                 </td>
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
+        {sortedMemberLoans.length > 0 && (
+          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+            <p className="text-[10px] text-slate-500">
+              Page {Math.min(loanPage, loanTotalPages)} of {loanTotalPages}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setLoanPage((page) => Math.max(1, page - 1))}
+                disabled={loanPage <= 1}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-[10px] font-bold text-slate-600 disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() =>
+                  setLoanPage((page) => Math.min(loanTotalPages, page + 1))
+                }
+                disabled={loanPage >= loanTotalPages}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-[10px] font-bold text-slate-600 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+      {dossierMemberId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+          onClick={() => setDossierMemberId(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b border-slate-100 bg-indigo-50 p-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">
+                  Member Financial Dossier
+                </p>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">
+                  {dossierProfile?.name ||
+                    dossierMember?.userName ||
+                    "Member"}
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {dossierProfile?.contact || "Contact not available"} ·{" "}
+                  {dossierProfile?.barangay ||
+                    dossierMember?.userBarangay ||
+                    "Barangay not available"}
+                </p>
+              </div>
+              <button
+                onClick={() => setDossierMemberId(null)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="grid gap-3 sm:grid-cols-4">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Lifetime Borrowed
+                  </p>
+                  <p className="mt-1 text-lg font-extrabold text-indigo-900">
+                    ₱{dossierTotalBorrowed.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Repaid
+                  </p>
+                  <p className="mt-1 text-lg font-extrabold text-emerald-700">
+                    ₱{dossierTotalRepaid.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Defaults
+                  </p>
+                  <p className="mt-1 text-lg font-extrabold text-red-700">
+                    {dossierDefaults}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-[9px] font-bold uppercase text-slate-400">
+                    Ledger Net
+                  </p>
+                  <p
+                    className={`mt-1 text-lg font-extrabold ${
+                      dossierIncome - dossierExpenses >= 0
+                        ? "text-emerald-700"
+                        : "text-red-700"
+                    }`}
+                  >
+                    ₱{(dossierIncome - dossierExpenses).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <section>
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                  Loans
+                </h3>
+                <div className="space-y-2">
+                  {dossierLoans.length === 0 ? (
+                    <p className="text-xs italic text-slate-400">
+                      No loans found for this member.
+                    </p>
+                  ) : (
+                    dossierLoans.map((loan) => {
+                      const allocation =
+                        loan.memberAllocations?.find(
+                          (item) => item.memberId === dossierMemberId,
+                        )?.amount || 0;
+                      return (
+                        <div
+                          key={loan.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3"
+                        >
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">
+                              {loan.id}
+                            </p>
+                            <p className="text-[10px] text-slate-500">
+                              {loan.applicantType === "cooperative"
+                                ? `Cooperative allocation: ₱${allocation.toLocaleString()}`
+                                : loan.purpose || "Individual loan"}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-bold text-indigo-700">
+                              ₱{loan.remainingBalance.toLocaleString()} remaining
+                            </p>
+                            <span
+                              className={`text-[10px] font-bold ${LOAN_STATUS_CONFIG[loan.status].color}`}
+                            >
+                              {LOAN_STATUS_CONFIG[loan.status].label}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                  Payment History
+                </h3>
+                <div className="space-y-2">
+                  {dossierPayments.filter((payment) =>
+                    dossierLoanIds.has(payment.loanId),
+                  ).length === 0 ? (
+                    <p className="text-xs italic text-slate-400">
+                      No payment history found.
+                    </p>
+                  ) : (
+                    dossierPayments
+                      .filter((payment) => dossierLoanIds.has(payment.loanId))
+                      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                      .slice(0, 20)
+                      .map((payment) => (
+                        <div
+                          key={payment.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-3 text-xs"
+                        >
+                          <span>
+                            {payment.loanId} · Payment #{payment.paymentNumber}
+                          </span>
+                          <span className="font-bold">
+                            ₱{payment.amountPaid.toLocaleString()} ·{" "}
+                            {payment.status}
+                            {payment.receiptImage && (
+                              <button
+                                onClick={() =>
+                                  setReceiptPreview(payment.receiptImage || null)
+                                }
+                                className="ml-2 text-indigo-700 underline"
+                              >
+                                Receipt
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                  Income vs Expenses
+                </h3>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg bg-emerald-50 p-3">
+                    <p className="text-[10px] font-bold text-emerald-700">
+                      Income
+                    </p>
+                    <p className="text-sm font-extrabold text-emerald-800">
+                      ₱{dossierIncome.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-100 p-3">
+                    <p className="text-[10px] font-bold text-slate-600">
+                      Expenses
+                    </p>
+                    <p className="text-sm font-extrabold text-slate-800">
+                      ₱{dossierExpenses.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-indigo-50 p-3">
+                    <p className="text-[10px] font-bold text-indigo-700">
+                      Net Profit
+                    </p>
+                    <p className="text-sm font-extrabold text-indigo-800">
+                      ₱{(dossierIncome - dossierExpenses).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
       {pendingPayments.length > 0 && (
         <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-4">

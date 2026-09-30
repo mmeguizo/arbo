@@ -26,6 +26,7 @@ import {
   Landmark,
   Loader2,
   Plus,
+  Search,
   TrendingDown,
   TrendingUp,
   Upload,
@@ -108,6 +109,11 @@ export const LoanApplication: React.FC = () => {
   const [incomeExpenses, setIncomeExpenses] = useState<LoanIncomeExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>("loans");
+  const [loanSearch, setLoanSearch] = useState("");
+  const [loanStatusFilter, setLoanStatusFilter] = useState<
+    "all" | "active" | "pending" | "completed"
+  >("all");
+  const [ledgerCategoryFilter, setLedgerCategoryFilter] = useState("all");
   const [expandedLoan, setExpandedLoan] = useState<string | null>(null);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [resubmittingLoan, setResubmittingLoan] = useState<Loan | null>(null);
@@ -347,13 +353,86 @@ export const LoanApplication: React.FC = () => {
       .sort();
     return dates[0] || "";
   }, [loans, user?.uid]);
-  const personalLoans = loans.filter(
+  const allPersonalLoans = loans.filter(
     (loan) =>
       loan.applicantId === user?.uid && loan.applicantType === "individual",
   );
-  const cooperativeLoans = loans.filter(
+  const allCooperativeLoans = loans.filter(
     (loan) => loan.applicantType === "cooperative",
   );
+  const matchesLoanFilters = (loan: Loan) => {
+    const term = loanSearch.trim().toLowerCase();
+    const matchesSearch =
+      !term ||
+      loan.id.toLowerCase().includes(term) ||
+      loan.purpose.toLowerCase().includes(term);
+    const matchesStatus =
+      loanStatusFilter === "all" ||
+      (loanStatusFilter === "pending" &&
+        ["pending_approval", "needs_review"].includes(loan.status)) ||
+      loan.status === loanStatusFilter;
+    return matchesSearch && matchesStatus;
+  };
+  const filteredPersonalLoans = useMemo(
+    () =>
+      allPersonalLoans
+        .filter(matchesLoanFilters)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime(),
+        ),
+    [allPersonalLoans, loanSearch, loanStatusFilter],
+  );
+  const filteredCooperativeLoans = useMemo(
+    () =>
+      allCooperativeLoans
+        .filter(matchesLoanFilters)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime(),
+        ),
+    [allCooperativeLoans, loanSearch, loanStatusFilter],
+  );
+  const activePersonalLoans = allPersonalLoans.filter(
+    (loan) => loan.status === "active",
+  );
+  const heroLoan = [...activePersonalLoans].sort(
+    (a, b) =>
+      new Date(a.nextPaymentDue || "9999-12-31").getTime() -
+      new Date(b.nextPaymentDue || "9999-12-31").getTime(),
+  )[0];
+  const heroPayments = heroLoan
+    ? payments
+        .filter(
+          (payment) =>
+            payment.loanId === heroLoan.id && !payment.isEarlyRepayment,
+        )
+        .sort((a, b) => a.paymentNumber - b.paymentNumber)
+    : [];
+  const heroNextPayment =
+    heroPayments.find(
+      (payment) => payment.status === "upcoming" || payment.status === "overdue",
+    ) || null;
+  const heroPaidInstallments = heroPayments.filter(
+    (payment) => payment.status === "paid" && payment.verifiedAt,
+  ).length;
+  const heroProgress =
+    heroLoan && heroLoan.totalRepayment > 0
+      ? Math.min(100, Math.round((heroLoan.totalPaid / heroLoan.totalRepayment) * 100))
+      : 0;
+  const lifetimeBorrowed = allPersonalLoans.reduce(
+    (sum, loan) => sum + (loan.principalAmount || 0),
+    0,
+  );
+  const lifetimeRepaid = allPersonalLoans.reduce(
+    (sum, loan) => sum + (loan.totalPaid || 0),
+    0,
+  );
+  const completedPersonalLoans = allPersonalLoans.filter(
+    (loan) => loan.status === "completed",
+  ).length;
   const totalIncome = useMemo(
     () =>
       incomeExpenses
@@ -369,12 +448,23 @@ export const LoanApplication: React.FC = () => {
     [incomeExpenses],
   );
   const netProfit = totalIncome - totalExpenses;
-  const visibleLedgerEntries =
+  const selectedLedgerEntries =
     selectedLedgerLoanId === "all"
       ? incomeExpenses
       : incomeExpenses.filter(
           (entry) => entry.loanId === selectedLedgerLoanId,
         );
+  const visibleLedgerEntries =
+    ledgerCategoryFilter === "all"
+      ? selectedLedgerEntries
+      : selectedLedgerEntries.filter(
+          (entry) => entry.category === ledgerCategoryFilter,
+        );
+  const ledgerCategoryOptions = useMemo(
+    () =>
+      Array.from(new Set(incomeExpenses.map((entry) => entry.category))).sort(),
+    [incomeExpenses],
+  );
   const visibleLedgerIncome = visibleLedgerEntries
     .filter((entry) => entry.type === "income")
     .reduce((sum, entry) => sum + entry.amount, 0);
@@ -881,13 +971,137 @@ export const LoanApplication: React.FC = () => {
 
           {activeTab === "loans" ? (
             <div className="space-y-3">
-              {personalLoans.length === 0 && (
+              {heroLoan && (
+                <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                        Active loan health
+                      </p>
+                      <h2 className="mt-1 font-bold text-emerald-950">
+                        {heroLoan.purpose}
+                      </h2>
+                      <p className="mt-1 text-xs text-emerald-800">
+                        {heroLoan.id} · {money(heroLoan.remainingBalance)} remaining
+                      </p>
+                    </div>
+                    {heroNextPayment && (
+                      <button
+                        onClick={() => openPaymentModal(heroLoan, heroNextPayment)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800"
+                      >
+                        <Calendar size={14} />
+                        Pay next installment
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <Metric
+                      label="Next payment"
+                      value={
+                        heroNextPayment
+                          ? `${money(heroNextPayment.amountDue)} · ${formatDate(heroNextPayment.dueDate)}`
+                          : "No upcoming payment"
+                      }
+                    />
+                    <Metric
+                      label="Installments paid"
+                      value={`${heroPaidInstallments} of ${heroPayments.length}`}
+                    />
+                    <Metric label="Progress" value={`${heroProgress}% paid`} />
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-600 transition-all"
+                      style={{ width: `${heroProgress}%` }}
+                    />
+                  </div>
+                </section>
+              )}
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      Lifetime financial snapshot
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Your individual borrowing history and repayment progress.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-right sm:grid-cols-4">
+                    <Metric label="Borrowed" value={money(lifetimeBorrowed)} />
+                    <Metric label="Repaid" value={money(lifetimeRepaid)} />
+                    <Metric
+                      label="Outstanding"
+                      value={money(
+                        allPersonalLoans.reduce(
+                          (sum, loan) => sum + (loan.remainingBalance || 0),
+                          0,
+                        ),
+                      )}
+                    />
+                    <Metric label="Completed loans" value={String(completedPersonalLoans)} />
+                  </div>
+                </div>
+              </section>
+
+              <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_auto]">
+                <label className="relative block">
+                  <span className="sr-only">Search loans</span>
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                  <input
+                    value={loanSearch}
+                    onChange={(event) => setLoanSearch(event.target.value)}
+                    className={`${inputClassName} pl-9`}
+                    placeholder="Search by loan ID or purpose"
+                  />
+                </label>
+                <div>
+                  <p className="mb-1 text-xs font-bold text-slate-600">Status</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        ["all", "All"],
+                        ["active", "Active"],
+                        ["pending", "Pending"],
+                        ["completed", "Completed"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        onClick={() => setLoanStatusFilter(value)}
+                        className={`rounded-lg border px-2.5 py-2 text-[10px] font-bold ${
+                          loanStatusFilter === value
+                            ? "border-emerald-800 bg-emerald-800 text-white"
+                            : "border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {filteredPersonalLoans.length === 0 && (
                 <EmptyState
-                  title="No individual loan applications yet"
-                  text="Your personal My Loans area only contains individual loans. Cooperative loans are shown separately below."
+                  title={
+                    allPersonalLoans.length === 0
+                      ? "No individual loan applications yet"
+                      : "No individual loans match your filters"
+                  }
+                  text={
+                    allPersonalLoans.length === 0
+                      ? "Your personal My Loans area only contains individual loans. Cooperative loans are shown separately below."
+                      : "Try a different search term or status filter."
+                  }
                 />
               )}
-              {personalLoans.map((loan) => {
+              {filteredPersonalLoans.map((loan) => {
                 const expanded = expandedLoan === loan.id;
                 const loanPayments = paymentsForLoan(loan.id);
                 const status = LOAN_STATUS_CONFIG[loan.status];
@@ -1072,7 +1286,7 @@ export const LoanApplication: React.FC = () => {
                   </section>
                 );
               })}
-              {cooperativeLoans.length > 0 && (
+              {filteredCooperativeLoans.length > 0 && (
                 <section className="mt-6 space-y-3">
                   <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
                     <h2 className="font-bold text-indigo-900">
@@ -1084,7 +1298,7 @@ export const LoanApplication: React.FC = () => {
                       payments assigned to your own member account.
                     </p>
                   </div>
-                  {cooperativeLoans.map((loan) => {
+                  {filteredCooperativeLoans.map((loan) => {
                     const loanPayments = paymentsForLoan(loan.id);
                     const scheduledPayments = loanPayments.filter(
                       (payment) => !payment.isEarlyRepayment,
@@ -1269,6 +1483,9 @@ export const LoanApplication: React.FC = () => {
               onLoanChange={setSelectedLedgerLoanId}
               totalIncome={visibleLedgerIncome}
               totalExpenses={visibleLedgerExpenses}
+              categoryFilter={ledgerCategoryFilter}
+              categoryOptions={ledgerCategoryOptions}
+              onCategoryChange={setLedgerCategoryFilter}
               onAdd={(type) => {
                 setIncomeExpenseType(type);
                 setIeCategory("");
@@ -1498,6 +1715,9 @@ const LedgerSection: React.FC<{
   onLoanChange: (loanId: string) => void;
   totalIncome: number;
   totalExpenses: number;
+  categoryFilter: string;
+  categoryOptions: string[];
+  onCategoryChange: (category: string) => void;
   onAdd: (type: "income" | "expense") => void;
 }> = ({
   entries,
@@ -1506,9 +1726,16 @@ const LedgerSection: React.FC<{
   onLoanChange,
   totalIncome,
   totalExpenses,
+  categoryFilter,
+  categoryOptions,
+  onCategoryChange,
   onAdd,
-}) => (
-  <div className="space-y-4">
+}) => {
+  const balanceTotal = totalIncome + totalExpenses;
+  const incomeWidth =
+    balanceTotal > 0 ? `${(totalIncome / balanceTotal) * 100}%` : "0%";
+  return (
+    <div className="space-y-4">
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <label className="block text-xs font-bold text-slate-600">
         Manage ledger for
@@ -1535,9 +1762,59 @@ const LedgerSection: React.FC<{
       <Metric label="Total Expenses" value={money(totalExpenses)} />
       <Metric label="Net" value={money(totalIncome - totalExpenses)} />
     </div>
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-bold text-slate-700">Income vs expenses</span>
+        <span className="text-slate-500">
+          {balanceTotal > 0
+            ? `${Math.round((totalIncome / balanceTotal) * 100)}% income`
+            : "No transactions"}
+        </span>
+      </div>
+      <div className="mt-2 flex h-3 overflow-hidden rounded-full bg-red-100">
+        <div
+          className="bg-emerald-500 transition-all"
+          style={{ width: incomeWidth }}
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold">
+        <span className="text-emerald-700">Income {money(totalIncome)}</span>
+        <span className="text-red-700">Expenses {money(totalExpenses)}</span>
+      </div>
+    </div>
     <div className="flex gap-2">
       <button onClick={() => onAdd("income")} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white"><Plus size={14} /> Add Income</button>
       <button onClick={() => onAdd("expense")} className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white"><Plus size={14} /> Add Expense</button>
+    </div>
+    <div>
+      <p className="mb-1 text-xs font-bold text-slate-600">
+        Filter by category
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          onClick={() => onCategoryChange("all")}
+          className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${
+            categoryFilter === "all"
+              ? "border-emerald-800 bg-emerald-800 text-white"
+              : "border-slate-200 bg-white text-slate-600"
+          }`}
+        >
+          All
+        </button>
+        {categoryOptions.map((category) => (
+          <button
+            key={category}
+            onClick={() => onCategoryChange(category)}
+            className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold ${
+              categoryFilter === category
+                ? "border-emerald-800 bg-emerald-800 text-white"
+                : "border-slate-200 bg-white text-slate-600"
+            }`}
+          >
+            {category}
+          </button>
+        ))}
+      </div>
     </div>
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-400"><tr><th className="p-3">Date</th><th className="p-3">Type</th><th className="p-3">Category</th><th className="p-3">Description</th><th className="p-3 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-100">
@@ -1545,8 +1822,9 @@ const LedgerSection: React.FC<{
         {entries.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400">No ledger entries yet.</td></tr>}
       </tbody></table>
     </div>
-  </div>
-);
+    </div>
+  );
+};
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => <label className="block text-xs font-bold text-slate-600">{label}<span className="mt-1 block">{children}</span></label>;
 const ErrorText: React.FC<{ text: string }> = ({ text }) => <p className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">{text}</p>;

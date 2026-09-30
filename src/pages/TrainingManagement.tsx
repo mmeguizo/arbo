@@ -38,7 +38,7 @@ interface Training {
   date: string;
   status: "ongoing" | "completed";
   documentLinks: string[];
-  assignedTo: "cooperative" | "individuals";
+  assignedTo: "all" | "cooperative" | "individuals";
   assignedCoopIds: string[];
   assignedUserIds: string[];
   createdAt: string;
@@ -60,12 +60,20 @@ interface ARBUser {
   name: string;
   municipality: string;
   barangay: string;
+  role: "arb" | "arbo_head";
 }
 
 interface CoopRecord {
   id: string;
   name: string;
   municipality: string;
+  headId?: string;
+}
+
+interface TrainingRecipient {
+  uid: string;
+  name: string;
+  role: "arb" | "arbo_head";
 }
 
 export const TrainingManagement: React.FC = () => {
@@ -80,6 +88,10 @@ export const TrainingManagement: React.FC = () => {
     "all" | "ongoing" | "completed"
   >("all");
   const [expandedTraining, setExpandedTraining] = useState<string | null>(null);
+  const [ackSearch, setAckSearch] = useState("");
+  const [ackStatusFilter, setAckStatusFilter] = useState<
+    "all" | "acknowledged" | "pending" | "declined"
+  >("all");
 
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -94,7 +106,7 @@ export const TrainingManagement: React.FC = () => {
   );
   const [formLinks, setFormLinks] = useState<string[]>([""]);
   const [formAssignedTo, setFormAssignedTo] = useState<
-    "cooperative" | "individuals"
+    "all" | "cooperative" | "individuals"
   >("individuals");
   const [formSelectedCoops, setFormSelectedCoops] = useState<string[]>([]);
   const [formSelectedUsers, setFormSelectedUsers] = useState<string[]>([]);
@@ -117,7 +129,12 @@ export const TrainingManagement: React.FC = () => {
             date: data.date || "",
             status: data.status || "ongoing",
             documentLinks: data.documentLinks || [],
-            assignedTo: data.assignedTo || "individuals",
+            assignedTo:
+              data.assignedTo === "all" ||
+              data.assignedTo === "cooperative" ||
+              data.assignedTo === "individuals"
+                ? data.assignedTo
+                : "individuals",
             assignedCoopIds: data.assignedCoopIds || [],
             assignedUserIds: data.assignedUserIds || [],
             createdAt: data.createdAt || "",
@@ -152,6 +169,7 @@ export const TrainingManagement: React.FC = () => {
             name: data.name || "Unknown",
             municipality: data.municipality || "",
             barangay: data.barangay || "",
+            role: data.role === "arbo_head" ? "arbo_head" : "arb",
           });
         });
         setArbUsers(list);
@@ -166,6 +184,7 @@ export const TrainingManagement: React.FC = () => {
           id: d.id,
           name: data.name,
           municipality: data.municipality,
+          headId: data.headId || undefined,
         });
       });
       setCooperatives(list);
@@ -197,6 +216,79 @@ export const TrainingManagement: React.FC = () => {
   const getTrainingAcks = (trainingId: string) =>
     acks.filter((a) => a.trainingId === trainingId);
 
+  const getAckStatus = (
+    ack: TrainingAck,
+  ): "pending" | "acknowledged" | "declined" =>
+    ack.status === "acknowledged" || ack.status === "declined"
+      ? ack.status
+      : "pending";
+
+  const getAssignmentRecipients = async (): Promise<TrainingRecipient[]> => {
+    const recipients = new Map<string, TrainingRecipient>();
+    const addRecipient = (recipient: TrainingRecipient) => {
+      if (recipient.uid) recipients.set(recipient.uid, recipient);
+    };
+
+    if (formAssignedTo === "all") {
+      arbUsers.forEach((user) =>
+        addRecipient({
+          uid: user.uid,
+          name: user.name,
+          role: user.role,
+        }),
+      );
+    }
+
+    if (formAssignedTo === "individuals") {
+      formSelectedUsers.forEach((uid) => {
+        const user = arbUsers.find((candidate) => candidate.uid === uid);
+        if (user) {
+          addRecipient({
+            uid: user.uid,
+            name: user.name,
+            role: user.role,
+          });
+        }
+      });
+    }
+
+    if (formAssignedTo === "cooperative") {
+      for (const coopId of formSelectedCoops) {
+        const coopMembersSnap = await getDocs(
+          query(
+            collection(db, "cooperativeMembers"),
+            where("cooperativeId", "==", coopId),
+          ),
+        );
+        coopMembersSnap.forEach((memberDoc) => {
+          const memberData = memberDoc.data();
+          const user = arbUsers.find(
+            (candidate) => candidate.uid === memberData.userId,
+          );
+          addRecipient({
+            uid: memberData.userId,
+            name: user?.name || memberData.userName || "Unknown",
+            role: user?.role || "arb",
+          });
+        });
+
+        const cooperative = cooperatives.find((coop) => coop.id === coopId);
+        if (cooperative?.headId) {
+          const head = arbUsers.find(
+            (candidate) => candidate.uid === cooperative.headId,
+          );
+          addRecipient({
+            uid: cooperative.headId,
+            name: head?.name || "ARBO Head",
+            role: "arbo_head",
+          });
+        }
+      }
+    }
+
+    return Array.from(recipients.values());
+  };
+
   const createTraining = async () => {
     if (!formName.trim()) {
       setFormError("Training name is required.");
@@ -206,9 +298,19 @@ export const TrainingManagement: React.FC = () => {
       setFormError("Please select a date.");
       return;
     }
+    if (formAssignedTo === "cooperative" && formSelectedCoops.length === 0) {
+      setFormError("Select at least one ARBO.");
+      return;
+    }
+    if (formAssignedTo === "individuals" && formSelectedUsers.length === 0) {
+      setFormError("Select at least one user.");
+      return;
+    }
     setFormError(null);
     setSubmitting(true);
     try {
+      const createdAt = new Date().toISOString();
+      const recipients = await getAssignmentRecipients();
       const docRef = await addDoc(collection(db, "trainings"), {
         name: formName.trim(),
         purpose: formPurpose.trim(),
@@ -218,43 +320,35 @@ export const TrainingManagement: React.FC = () => {
         assignedTo: formAssignedTo,
         assignedCoopIds: formSelectedCoops,
         assignedUserIds: formSelectedUsers,
-        createdAt: new Date().toISOString(),
+        createdAt,
         createdBy: profile?.name || "Admin",
       });
 
-      // Write pending acknowledgments for directly assigned users
-      for (const uid of formSelectedUsers) {
-        const user = arbUsers.find((a) => a.uid === uid);
-        const ackId = `${docRef.id}_${uid}`;
-        await setDoc(doc(db, "trainingAcknowledgments", ackId), {
+      await Promise.all(
+        recipients.map((recipient) =>
+          setDoc(doc(db, "trainingAcknowledgments", `${docRef.id}_${recipient.uid}`), {
           trainingId: docRef.id,
-          userId: uid,
-          userName: user?.name || "Unknown",
+          userId: recipient.uid,
+          userName: recipient.name,
           status: "pending",
-        });
-      }
+          }),
+        ),
+      );
 
-      // If assigned to coops, also create acks for all coop members
-      if (formAssignedTo === "cooperative" && formSelectedCoops.length > 0) {
-        for (const coopId of formSelectedCoops) {
-          const coopMembersSnap = await getDocs(
-            query(
-              collection(db, "cooperativeMembers"),
-              where("cooperativeId", "==", coopId),
-            ),
-          );
-          coopMembersSnap.forEach(async (memberDoc) => {
-            const memberData = memberDoc.data();
-            const ackId = `${docRef.id}_${memberData.userId}`;
-            await setDoc(doc(db, "trainingAcknowledgments", ackId), {
-              trainingId: docRef.id,
-              userId: memberData.userId,
-              userName: memberData.userName || "Unknown",
-              status: "pending",
-            });
-          });
-        }
-      }
+      await Promise.all(
+        recipients.map((recipient) =>
+          addDoc(collection(db, "notifications"), {
+            recipientId: recipient.uid,
+            recipientRole: recipient.role,
+            type: "training_assigned",
+            title: `New Training: ${formName.trim()}`,
+            message: `You have been assigned to "${formName.trim()}" scheduled for ${formatDate(formDate)}.`,
+            applicationId: null,
+            read: false,
+            createdAt,
+          }),
+        ),
+      );
 
       resetForm();
       setShowAddModal(false);
@@ -295,9 +389,10 @@ export const TrainingManagement: React.FC = () => {
 
   const sendReminder = async (training: Training, userId: string) => {
     try {
+      const recipient = arbUsers.find((user) => user.uid === userId);
       await addDoc(collection(db, "notifications"), {
         recipientId: userId,
-        recipientRole: "arb",
+        recipientRole: recipient?.role || "arb",
         type: "training_reminder",
         title: `Reminder: ${training.name}`,
         message: `Please acknowledge your attendance for "${training.name}" on ${formatDate(training.date)}.`,
@@ -509,14 +604,26 @@ export const TrainingManagement: React.FC = () => {
                 {filteredTrainings.map((t) => {
                   const trainingAcks = getTrainingAcks(t.id);
                   const ackCount = trainingAcks.filter(
-                    (a) => a.status === "acknowledged",
+                    (a) => getAckStatus(a) === "acknowledged",
                   ).length;
                   const declinedCount = trainingAcks.filter(
-                    (a) => a.status === "declined",
+                    (a) => getAckStatus(a) === "declined",
                   ).length;
                   const pendingCount = trainingAcks.filter(
-                    (a) => a.status === "pending",
+                    (a) => getAckStatus(a) === "pending",
                   ).length;
+                  const filteredAcks = trainingAcks.filter((ack) => {
+                    const status = getAckStatus(ack);
+                    const matchesStatus =
+                      ackStatusFilter === "all" ||
+                      status === ackStatusFilter;
+                    const matchesSearch =
+                      !ackSearch.trim() ||
+                      ack.userName
+                        .toLowerCase()
+                        .includes(ackSearch.trim().toLowerCase());
+                    return matchesStatus && matchesSearch;
+                  });
                   const isExpanded = expandedTraining === t.id;
                   return (
                     <div
@@ -547,7 +654,9 @@ export const TrainingManagement: React.FC = () => {
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                                 {t.assignedTo === "cooperative"
                                   ? "ARBO"
-                                  : "Individuals"}
+                                    : t.assignedTo === "all"
+                                      ? "All ARBs & Heads"
+                                      : "Individuals"}
                               </span>
                             </div>
                             <h3 className="font-bold text-slate-900 text-sm">
@@ -624,13 +733,56 @@ export const TrainingManagement: React.FC = () => {
                               Acknowledgement Status ({trainingAcks.length}{" "}
                               assigned)
                             </p>
+                            <div className="mb-3 flex flex-wrap items-center gap-2">
+                              <div className="relative min-w-[180px] flex-1">
+                                <Search
+                                  size={12}
+                                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                                />
+                                <input
+                                  type="search"
+                                  value={ackSearch}
+                                  onChange={(event) =>
+                                    setAckSearch(event.target.value)
+                                  }
+                                  placeholder="Search attendee..."
+                                  className="block w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-[10px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                />
+                              </div>
+                              {(
+                                [
+                                  ["all", "All"],
+                                  ["acknowledged", "Attending"],
+                                  ["pending", "Pending"],
+                                  ["declined", "Declined"],
+                                ] as const
+                              ).map(([value, label]) => (
+                                <button
+                                  key={value}
+                                  onClick={() => setAckStatusFilter(value)}
+                                  className={`rounded-lg border px-2 py-1.5 text-[10px] font-bold ${
+                                    ackStatusFilter === value
+                                      ? "border-emerald-800 bg-emerald-800 text-white"
+                                      : "border-slate-200 bg-white text-slate-600"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
                             {trainingAcks.length === 0 ? (
                               <p className="text-xs text-slate-400 italic">
                                 No acknowledgments yet.
                               </p>
+                            ) : filteredAcks.length === 0 ? (
+                              <p className="text-xs italic text-slate-400">
+                                No attendees match this search or filter.
+                              </p>
                             ) : (
                               <div className="space-y-1.5">
-                                {trainingAcks.map((a) => (
+                                {filteredAcks.map((a) => {
+                                  const ackStatus = getAckStatus(a);
+                                  return (
                                   <div
                                     key={a.id}
                                     className="bg-slate-50 rounded-lg px-3 py-2 text-xs"
@@ -642,16 +794,16 @@ export const TrainingManagement: React.FC = () => {
                                         </span>
                                         <span
                                           className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                            a.status === "acknowledged"
+                                            ackStatus === "acknowledged"
                                               ? "bg-emerald-100 text-emerald-700"
-                                              : a.status === "declined"
+                                              : ackStatus === "declined"
                                                 ? "bg-red-100 text-red-700"
                                                 : "bg-amber-100 text-amber-700"
                                           }`}
                                         >
-                                          {a.status === "acknowledged"
+                                          {ackStatus === "acknowledged"
                                             ? "✓ Attending"
-                                            : a.status === "declined"
+                                            : ackStatus === "declined"
                                               ? "✗ Declined"
                                               : "Pending"}
                                         </span>
@@ -662,7 +814,7 @@ export const TrainingManagement: React.FC = () => {
                                             {formatDate(a.acknowledgedAt)}
                                           </span>
                                         )}
-                                        {a.status === "pending" && (
+                                        {ackStatus === "pending" && (
                                           <button
                                             onClick={() =>
                                               sendReminder(t, a.userId)
@@ -674,13 +826,14 @@ export const TrainingManagement: React.FC = () => {
                                         )}
                                       </div>
                                     </div>
-                                    {a.status === "declined" && a.reason && (
+                                    {ackStatus === "declined" && a.reason && (
                                       <div className="mt-1.5 pt-1.5 border-t border-red-100 text-[10px] text-red-600 italic">
                                         Reason: {a.reason}
                                       </div>
                                     )}
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -833,6 +986,12 @@ export const TrainingManagement: React.FC = () => {
                 </label>
                 <div className="flex gap-2 mb-3">
                   <button
+                    onClick={() => setFormAssignedTo("all")}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold border cursor-pointer ${formAssignedTo === "all" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
+                  >
+                    All ARBs & Heads
+                  </button>
+                  <button
                     onClick={() => setFormAssignedTo("individuals")}
                     className={`flex-1 py-2 rounded-lg text-xs font-bold border cursor-pointer ${formAssignedTo === "individuals" ? "bg-emerald-800 text-white border-emerald-800" : "bg-white text-slate-600 border-slate-200"}`}
                   >
@@ -845,7 +1004,12 @@ export const TrainingManagement: React.FC = () => {
                     ARBOs
                   </button>
                 </div>
-                {formAssignedTo === "cooperative" ? (
+                {formAssignedTo === "all" ? (
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3 text-xs text-emerald-800">
+                    This training will be assigned to every ARB member and
+                    ARBO Head currently in the system.
+                  </div>
+                ) : formAssignedTo === "cooperative" ? (
                   <div className="max-h-36 overflow-y-auto space-y-1 border border-slate-200 rounded-xl p-2">
                     {cooperatives.map((c) => (
                       <label

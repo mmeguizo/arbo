@@ -328,6 +328,28 @@ semi-annual, and annual. The final installment receives any rounding remainder.
 - ✅ **Mobile layout normalization**: Mobile navigation uses a fixed header,
   page shells prevent horizontal overflow, and content receives mobile header
   spacing while retaining desktop layouts.
+- ✅ **Training and loan UI/UX modernization**:
+  - Completed training cards now open a materials review modal. Users can
+    confirm that they read the materials, which updates
+    `/trainingAcknowledgments/{trainingId}_{userId}` and notifies admins.
+  - Admin training assignment supports all ARB members and ARBO Heads,
+    selected individuals, or cooperatives. Cooperative assignments include
+    cooperative members and the cooperative `headId`, with pending
+    acknowledgments and assignment notifications.
+  - Training management and the ARBO Dashboard expose normalized pending,
+    acknowledged, and declined states, member search/status filters, progress
+    percentages, and bulk pending reminders.
+  - ARBO Head loan monitoring includes cooperative financial-health metrics,
+    newest-first member-loan search/sort/pagination, and a member dossier with
+    profile, loans, allocations, payment receipts, and ledger totals.
+  - Admin Loan Management includes global borrower/loan/cooperative search,
+    status and sort controls, 10/25/50 item pagination, payment and defaulter
+    sub-tab filters, profitability controls, and a borrower 360-degree
+    dossier with lifetime borrowing and ledger summaries.
+  - User My Loans lists sort newest first and include an active-loan health
+    card, progress bar, next-payment action, lifetime repayment snapshot,
+    search/status filters, and a ledger income-versus-expenses bar with
+    category filtering.
 
 ---
 

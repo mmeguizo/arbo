@@ -194,3 +194,21 @@
 - [x] 16.7 Mobile layout normalization — Add fixed mobile header spacing, overflow-safe page shells, and responsive table/detail scrolling
 - [x] 16.8 Documentation — Update ERD, session handover, project context, and task checklist for monitoring and navigation changes
 - [x] 16.9 Verification — `npm run build` and `git diff --check` pass
+
+## Phase 17: Training Experience and Loan UI/UX Modernization (2026-09-30)
+
+- [x] 17.1 `MyTrainings.tsx` — Make completed training cards open a materials and review modal
+- [x] 17.2 `MyTrainings.tsx` — Allow users to confirm they reviewed training materials and notify admins
+- [x] 17.3 `TrainingManagement.tsx` — Add all ARBs/ARBO Heads assignment and cooperative-head inclusion
+- [x] 17.4 `TrainingManagement.tsx` — Create assignment notifications and add acknowledgment search/filter controls
+- [x] 17.5 `ArboDashboard.tsx` — Add training engagement progress and normalized acknowledgment statuses
+- [x] 17.6 `ArboDashboard.tsx` — Add member search/status filters and bulk pending-training nudges
+- [x] 17.7 `ArboDashboard.tsx` — Add cooperative financial health metrics
+- [x] 17.8 `ArboDashboard.tsx` — Add member-loan search, sorting, and ten-item pagination
+- [x] 17.9 `ArboDashboard.tsx` — Add member financial dossier with loan, payment, receipt, and ledger details
+- [x] 17.10 `LoanManagement.tsx` — Add newest-first loan ordering, global search, status filters, and sorting
+- [x] 17.11 `LoanManagement.tsx` — Add configurable loan pagination and payment/defaulter sub-tab controls
+- [x] 17.12 `LoanManagement.tsx` — Add borrower 360-degree dossier with lifetime and ledger summaries
+- [x] 17.13 `LoanApplication.tsx` — Add newest-first loan views, active-loan health card, next-payment CTA, and lifetime snapshot
+- [x] 17.14 `LoanApplication.tsx` — Add loan search/status filters and income-versus-expense ledger visualization/category filtering
+- [x] 17.15 Documentation and verification — Update handover/specification and pass `npm run build` plus `git diff --check`
