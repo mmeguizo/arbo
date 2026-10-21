@@ -934,12 +934,7 @@ const LoansTab: React.FC<{
     };
   }, [arboId, members]);
 
-  if (loading)
-    return (
-      <div className="p-8 text-center text-xs text-slate-400">
-        Loading loans...
-      </div>
-    );
+  
   const totalOutstanding = loans.reduce(
     (s, loan) => s + (loan.remainingBalance || 0),
     0,
@@ -1400,6 +1395,14 @@ const LoansTab: React.FC<{
       setDisputeError("Unable to dispute this payment.");
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-8 text-center text-xs text-slate-400">
+        Loading loans...
+      </div>
+    );
+  }
 
   return (
     <div>

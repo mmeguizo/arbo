@@ -243,3 +243,9 @@
 - [x] 20.3 `AdminUsers.tsx` — Added `arb` (Agrarian Reform Beneficiary) role option to the Create User modal
 - [x] 20.4 `AdminUsers.tsx` — Added User Role dropdown to the Edit Profile modal for all 5 roles
 - [x] 20.5 Verification — `npm run build` passes with 0 TypeScript and bundle errors
+
+
+## Phase 21: Fix React Error #310 in ArboDashboard LoansTab (2026-10-21)
+
+- [x] 21.1 `ArboDashboard.tsx` — Moved `loading` early return to after all hooks in `LoansTab` to eliminate React Hook order violation (error #310)
+- [x] 21.2 Verification — `npm run build` passes with 0 TypeScript and bundle errors
