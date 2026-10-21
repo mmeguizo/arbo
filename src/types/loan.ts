@@ -110,8 +110,8 @@ export interface LoanIncomeExpense {
   date: string;
   loanId?: string;
   receiptImage?: string;
-  appliedToLoanId?: string;
-  appliedAmount?: number;
+  appliedToLoanId?: string | null;
+  appliedAmount?: number | null;
   appliedFromIncomeId?: string;
   createdAt: string;
   createdBy: string;
