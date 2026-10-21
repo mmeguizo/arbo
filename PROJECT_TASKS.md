@@ -249,3 +249,15 @@
 
 - [x] 21.1 `ArboDashboard.tsx` — Moved `loading` early return to after all hooks in `LoansTab` to eliminate React Hook order violation (error #310)
 - [x] 21.2 Verification — `npm run build` passes with 0 TypeScript and bundle errors
+
+
+## Phase 22: Loan Profitability Tracking, Dynamic KPIs & Flexible Payments (2026-10-21)
+
+- [x] 22.1 `LoanApplication.tsx` — Dynamically scoped top KPI cards (Active Loans, Outstanding Balance, Next Due, Net Profit, Loan Profitability) to react to single loan vs all loans filter
+- [x] 22.2 `LoanApplication.tsx` — Added 5th Loan Profitability (ROI) card computing Net Profit / Total Loan Obligation with status badges (Profitable, Recovering/On Track, Deficit)
+- [x] 22.3 `LoanApplication.tsx` — Added flexible payment amounts (lower partial payment, higher advance payment, and full balance payoff) with real-time status feedback
+- [x] 22.4 `LoanApplication.tsx` — Added 'Pay Loan With Income' action in ledger table to directly credit farm income entries towards loan repayment
+- [x] 22.5 `LoanApplication.tsx` — Added 'Apply directly towards loan payment' toggle in Add Income modal with automatic payment & ledger expense creation
+- [x] 22.6 `LoanManagement.tsx` — Updated admin payment verification to settle remaining upcoming schedule installments upon full payoff
+- [x] 22.7 `types/loan.ts` — Extended `LoanPayment` and `LoanIncomeExpense` types with metadata attributes for income-payment linkage
+- [x] 22.8 Verification — `npm run build` passes with 0 TypeScript and bundle errors

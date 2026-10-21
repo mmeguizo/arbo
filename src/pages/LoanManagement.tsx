@@ -707,14 +707,18 @@ export const LoanManagement: React.FC = () => {
         verifiedByName: profile.name,
         verifiedAt,
       });
-      if (payment.isEarlyRepayment && fullyPaid) {
+      const remainingBalance = Math.max(
+        0,
+        (loan.remainingBalance || loan.totalRepayment) - payment.amountPaid,
+      );
+      if ((payment.isEarlyRepayment && fullyPaid) || remainingBalance <= 0) {
         await Promise.all(
           payments
             .filter(
               (candidate) =>
                 candidate.loanId === loan.id &&
                 candidate.id !== payment.id &&
-                candidate.memberId === payment.memberId &&
+                (loan.applicantType === "individual" || candidate.memberId === payment.memberId) &&
                 ["upcoming", "overdue", "disputed"].includes(
                   candidate.status,
                 ),
@@ -743,10 +747,6 @@ export const LoanManagement: React.FC = () => {
                 candidate.memberId !== payment.memberId),
           )
           .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
-        const remainingBalance = Math.max(
-          0,
-          (loan.remainingBalance || loan.totalRepayment) - payment.amountPaid,
-        );
         await updateDoc(loanRef(loan), {
           totalPaid: (loan.totalPaid || 0) + payment.amountPaid,
           remainingBalance,

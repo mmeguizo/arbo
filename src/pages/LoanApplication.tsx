@@ -19,6 +19,8 @@ import { getDocumentPath, uploadFile } from "../utils/storage";
 import { writeAuditLog } from "../utils/audit";
 import {
   AlertCircle,
+  CheckCircle2,
+  Percent,
   Calendar,
   ChevronDown,
   ChevronUp,
@@ -130,6 +132,14 @@ export const LoanApplication: React.FC = () => {
     useState<File | null>(null);
   const [earlyRepaymentNotes, setEarlyRepaymentNotes] = useState("");
   const [showIncomeExpenseModal, setShowIncomeExpenseModal] = useState(false);
+  const [applyDirectlyToLoan, setApplyDirectlyToLoan] = useState(false);
+  const [incomeTargetLoanId, setIncomeTargetLoanId] = useState("");
+  const [incomeApplyAmount, setIncomeApplyAmount] = useState("");
+  const [selectedIncomeForPayment, setSelectedIncomeForPayment] = useState<LoanIncomeExpense | null>(null);
+  const [applyIncomeTargetLoanId, setApplyIncomeTargetLoanId] = useState("");
+  const [applyIncomeAmount, setApplyIncomeAmount] = useState("");
+  const [applyIncomeNotes, setApplyIncomeNotes] = useState("");
+  const [showApplyIncomeModal, setShowApplyIncomeModal] = useState(false);
   const [selectedLedgerLoanId, setSelectedLedgerLoanId] = useState("all");
   const [incomeExpenseType, setIncomeExpenseType] = useState<
     "income" | "expense"
@@ -319,46 +329,21 @@ export const LoanApplication: React.FC = () => {
     });
   }, [payments, profile]);
 
-  const activeLoansCount = useMemo(
-    () => loans.filter(
-      (loan) =>
-        loan.applicantId === user?.uid &&
-        loan.applicantType === "individual" &&
-        loan.status === "active",
-    ).length,
-    [loans, user?.uid],
-  );
-  const totalOutstanding = useMemo(
+  const allPersonalLoans = useMemo(
     () =>
-      loans
-        .filter(
-          (loan) =>
-            loan.applicantId === user?.uid &&
-            loan.applicantType === "individual" &&
-            loan.status === "active",
-        )
-        .reduce((sum, loan) => sum + (loan.remainingBalance || 0), 0),
+      loans.filter(
+        (loan) =>
+          loan.applicantId === user?.uid && loan.applicantType === "individual",
+      ),
     [loans, user?.uid],
   );
-  const nextDueDate = useMemo(() => {
-    const dates = loans
-      .filter(
-        (loan) =>
-          loan.applicantId === user?.uid &&
-          loan.applicantType === "individual" &&
-          loan.status === "active" &&
-          loan.nextPaymentDue,
-      )
-      .map((loan) => loan.nextPaymentDue)
-      .sort();
-    return dates[0] || "";
-  }, [loans, user?.uid]);
-  const allPersonalLoans = loans.filter(
-    (loan) =>
-      loan.applicantId === user?.uid && loan.applicantType === "individual",
+  const allCooperativeLoans = useMemo(
+    () => loans.filter((loan) => loan.applicantType === "cooperative"),
+    [loans],
   );
-  const allCooperativeLoans = loans.filter(
-    (loan) => loan.applicantType === "cooperative",
+  const relevantLoans = useMemo(
+    () => (isCooperativeApplication ? allCooperativeLoans : allPersonalLoans),
+    [isCooperativeApplication, allCooperativeLoans, allPersonalLoans],
   );
   const matchesLoanFilters = (loan: Loan) => {
     const term = loanSearch.trim().toLowerCase();
@@ -475,6 +460,101 @@ export const LoanApplication: React.FC = () => {
     activeTab === "income_expenses"
       ? visibleLedgerIncome - visibleLedgerExpenses
       : netProfit;
+
+  // Scoped loan metrics dynamically reacting to selectedLedgerLoanId filter
+  const scopedLoans = useMemo(() => {
+    if (selectedLedgerLoanId !== "all") {
+      const match = relevantLoans.filter((loan) => loan.id === selectedLedgerLoanId);
+      if (match.length > 0) return match;
+      return loans.filter((loan) => loan.id === selectedLedgerLoanId);
+    }
+    return relevantLoans;
+  }, [relevantLoans, loans, selectedLedgerLoanId]);
+
+  const scopedActiveLoansCount = useMemo(
+    () => scopedLoans.filter((loan) => loan.status === "active").length,
+    [scopedLoans],
+  );
+
+  const scopedTotalOutstanding = useMemo(
+    () =>
+      scopedLoans
+        .filter((loan) => loan.status === "active")
+        .reduce((sum, loan) => sum + (loan.remainingBalance || 0), 0),
+    [scopedLoans],
+  );
+
+  const scopedTotalObligation = useMemo(
+    () =>
+      scopedLoans.reduce(
+        (sum, loan) =>
+          sum + (loan.totalRepayment || (loan.principalAmount + (loan.totalInterest || 0))),
+        0,
+      ),
+    [scopedLoans],
+  );
+
+  const scopedNextDuePayment = useMemo(() => {
+    const activeScopedLoanIds = new Set(
+      scopedLoans.filter((loan) => loan.status === "active").map((l) => l.id),
+    );
+    const upcoming = payments
+      .filter(
+        (payment) =>
+          activeScopedLoanIds.has(payment.loanId) &&
+          (payment.status === "upcoming" || payment.status === "overdue") &&
+          canManageLoanPayment(
+            loans.find((l) => l.id === payment.loanId),
+            payment,
+            profile?.uid || "",
+          ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+      );
+    return upcoming[0] || null;
+  }, [scopedLoans, payments, loans, profile?.uid]);
+
+  // Loan Profitability / ROI Status Card (Net Profit / Total Loan Obligation)
+  const profitabilityMetrics = useMemo(() => {
+    if (scopedTotalObligation <= 0) {
+      return {
+        formattedRatio: "N/A",
+        label: "No Active Loan",
+        color: "text-slate-500",
+        bgColor: "bg-slate-50 text-slate-600 border-slate-200",
+        positive: true,
+      };
+    }
+    const ratio = Math.round((displayedNetProfit / scopedTotalObligation) * 100);
+    const formattedRatio = `${ratio >= 0 ? "+" : ""}${ratio}%`;
+    if (displayedNetProfit >= scopedTotalObligation) {
+      return {
+        formattedRatio,
+        label: "Profitable",
+        color: "text-emerald-700",
+        bgColor: "bg-emerald-50 text-emerald-800 border-emerald-200",
+        positive: true,
+      };
+    }
+    if (displayedNetProfit > 0) {
+      return {
+        formattedRatio,
+        label: "Recovering / On Track",
+        color: "text-amber-700",
+        bgColor: "bg-amber-50 text-amber-800 border-amber-200",
+        positive: true,
+      };
+    }
+    return {
+      formattedRatio,
+      label: "Deficit / Unprofitable",
+      color: "text-red-700",
+      bgColor: "bg-red-50 text-red-700 border-red-200",
+      positive: false,
+    };
+  }, [displayedNetProfit, scopedTotalObligation]);
 
   const openPaymentModal = (loan: Loan, payment: LoanPayment) => {
     if (!profile || !canManageLoanPayment(loan, payment, profile.uid)) return;
@@ -663,6 +743,10 @@ export const LoanApplication: React.FC = () => {
       return;
     }
 
+    const isFullPayoff =
+      Boolean(paymentLoan) &&
+      amount >= ((paymentLoan?.remainingBalance ?? paymentForEntry.amountDue));
+
     setSubmitting(true);
     setFormError(null);
     try {
@@ -679,7 +763,8 @@ export const LoanApplication: React.FC = () => {
         paidByName: profile.name,
         receiptImage,
         receiptNotes: payNotes.trim(),
-        status: amount >= paymentForEntry.amountDue ? "paid" : "partial",
+        status: isFullPayoff || amount >= paymentForEntry.amountDue ? "paid" : "partial",
+        isFullPayoff: isFullPayoff || undefined,
         disputeReason: null,
         disputedAt: null,
         disputedBy: null,
@@ -700,14 +785,18 @@ export const LoanApplication: React.FC = () => {
         entityId: paymentForEntry.id,
         applicationId: paymentForLoan,
         oldStatus: paymentForEntry.status,
-        newStatus: amount >= paymentForEntry.amountDue ? "paid" : "partial",
-        notes: `${profile.name} submitted a ${money(amount)} payment for loan ${paymentForLoan}.`,
+        newStatus: isFullPayoff || amount >= paymentForEntry.amountDue ? "paid" : "partial",
+        notes: isFullPayoff
+          ? `${profile.name} submitted full payoff of ${money(amount)} for loan ${paymentForLoan}.`
+          : `${profile.name} submitted a ${money(amount)} payment for loan ${paymentForLoan}.`,
       });
       await broadcastNotification(
         "admin",
         "payment_received",
-        "Loan payment received",
-        `${profile.name} submitted a ${money(amount)} payment for loan ${paymentForLoan}.`,
+        isFullPayoff ? "Full loan payoff received" : "Loan payment received",
+        isFullPayoff
+          ? `${profile.name} submitted a full payoff of ${money(amount)} for loan ${paymentForLoan}.`
+          : `${profile.name} submitted a ${money(amount)} payment for loan ${paymentForLoan}.`,
       );
       setShowPaymentModal(false);
     } catch (error) {
@@ -850,6 +939,19 @@ export const LoanApplication: React.FC = () => {
       );
       return;
     }
+
+    if (incomeExpenseType === "income" && applyDirectlyToLoan) {
+      if (!incomeTargetLoanId) {
+        setFormError("Select an active loan to apply payment towards.");
+        return;
+      }
+      const payPortion = Number(incomeApplyAmount || amount);
+      if (!Number.isFinite(payPortion) || payPortion <= 0 || payPortion > amount) {
+        setFormError(`Enter a valid payment portion up to ${money(amount)}.`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     setFormError(null);
     try {
@@ -860,7 +962,15 @@ export const LoanApplication: React.FC = () => {
           getDocumentPath(user.uid, "ledger_receipt", ieReceipt),
         );
       }
-      await addDoc(collection(db, "loanIncomeExpenses"), {
+
+      const assignedLoanId =
+        selectedLedgerLoanId === "all"
+          ? applyDirectlyToLoan && incomeTargetLoanId
+            ? incomeTargetLoanId
+            : null
+          : selectedLedgerLoanId;
+
+      const createdIncomeDoc = await addDoc(collection(db, "loanIncomeExpenses"), {
         userId: profile.uid,
         userName: profile.name,
         type: incomeExpenseType,
@@ -868,19 +978,271 @@ export const LoanApplication: React.FC = () => {
         description: ieDescription.trim(),
         amount,
         date: new Date(ieDate).toISOString(),
-        loanId: selectedLedgerLoanId === "all" ? null : selectedLedgerLoanId,
+        loanId: assignedLoanId,
         receiptImage: receiptImage || null,
+        appliedToLoanId: applyDirectlyToLoan && incomeTargetLoanId ? incomeTargetLoanId : undefined,
+        appliedAmount: applyDirectlyToLoan ? Number(incomeApplyAmount || amount) : undefined,
         createdAt: new Date().toISOString(),
         createdBy: user.uid,
       });
+
+      if (incomeExpenseType === "income" && applyDirectlyToLoan && incomeTargetLoanId) {
+        const payPortion = Number(incomeApplyAmount || amount);
+        const targetLoan = loans.find((l) => l.id === incomeTargetLoanId);
+        if (targetLoan) {
+          const targetPayments = payments
+            .filter(
+              (p) =>
+                p.loanId === targetLoan.id &&
+                (p.status === "upcoming" || p.status === "overdue" || p.status === "disputed"),
+            )
+            .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+          const nextPayment = targetPayments[0];
+          const isFullPayoff =
+            payPortion >= (targetLoan.remainingBalance || targetLoan.totalRepayment);
+
+          let paymentDocId = nextPayment?.id;
+          if (nextPayment) {
+            await updateDoc(doc(db, "loanPayments", nextPayment.id), {
+              amountPaid: payPortion,
+              paidAt: new Date().toISOString(),
+              paidBy: user.uid,
+              paidByName: profile.name,
+              receiptImage: receiptImage || null,
+              receiptNotes: `Paid from farm harvest/sales income: ${ieDescription.trim()}`,
+              status: isFullPayoff || payPortion >= nextPayment.amountDue ? "paid" : "partial",
+              isFullPayoff: isFullPayoff || undefined,
+              paidFromIncomeId: createdIncomeDoc.id,
+              disputeReason: null,
+              disputedAt: null,
+              disputedBy: null,
+            });
+          } else {
+            const created = await addDoc(collection(db, "loanPayments"), {
+              loanId: targetLoan.id,
+              applicantId: profile.uid,
+              memberId: profile.uid,
+              memberName: profile.name,
+              paymentNumber:
+                Math.max(
+                  0,
+                  ...payments
+                    .filter((p) => p.loanId === targetLoan.id)
+                    .map((p) => p.paymentNumber),
+                ) + 1,
+              dueDate: new Date().toISOString(),
+              amountDue: payPortion,
+              amountPaid: payPortion,
+              status: "paid",
+              isEarlyRepayment: true,
+              isFullPayoff: isFullPayoff || undefined,
+              paidAt: new Date().toISOString(),
+              paidBy: user.uid,
+              paidByName: profile.name,
+              receiptImage: receiptImage || null,
+              receiptNotes: `Paid from farm harvest/sales income: ${ieDescription.trim()}`,
+              paidFromIncomeId: createdIncomeDoc.id,
+              createdAt: new Date().toISOString(),
+            });
+            paymentDocId = created.id;
+          }
+
+          // Automatically record matching ledger expense
+          await addDoc(collection(db, "loanIncomeExpenses"), {
+            userId: profile.uid,
+            userName: profile.name,
+            type: "expense",
+            category: "Loan Payment",
+            description: `Auto-payment for loan ${targetLoan.id} deducted from farm income (${ieDescription.trim()})`,
+            amount: payPortion,
+            date: new Date(ieDate).toISOString(),
+            loanId: targetLoan.id,
+            receiptImage: receiptImage || null,
+            appliedFromIncomeId: createdIncomeDoc.id,
+            createdAt: new Date().toISOString(),
+            createdBy: user.uid,
+          });
+
+          await writeAuditLog({
+            actor: { uid: user.uid, name: profile.name, role: profile.role },
+            action: "income_applied_to_loan",
+            entityType: "loan_payment",
+            entityId: paymentDocId || targetLoan.id,
+            applicationId: targetLoan.id,
+            newStatus: "paid",
+            notes: `${profile.name} applied ${money(payPortion)} from farm income "${ieDescription.trim()}" to loan ${targetLoan.id}.`,
+          });
+
+          await broadcastNotification(
+            "admin",
+            "payment_received",
+            "Loan payment from farm income",
+            `${profile.name} applied ${money(payPortion)} from farm income towards loan ${targetLoan.id}.`,
+          );
+        }
+      }
+
       setShowIncomeExpenseModal(false);
       setIeCategory("");
       setIeDescription("");
       setIeAmount("");
       setIeReceipt(null);
+      setApplyDirectlyToLoan(false);
+      setIncomeTargetLoanId("");
+      setIncomeApplyAmount("");
     } catch (error) {
       console.error("Failed to save ledger entry:", error);
       setFormError("Unable to save the ledger entry.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openApplyIncomeModal = (entry: LoanIncomeExpense) => {
+    setSelectedIncomeForPayment(entry);
+    const defaultTargetId =
+      entry.loanId ||
+      (selectedLedgerLoanId !== "all" ? selectedLedgerLoanId : "") ||
+      allPersonalLoans.find((l) => l.status === "active")?.id ||
+      loans.find((l) => l.status === "active")?.id ||
+      "";
+    setApplyIncomeTargetLoanId(defaultTargetId);
+    setApplyIncomeAmount(String(entry.amount));
+    setApplyIncomeNotes("");
+    setFormError(null);
+    setShowApplyIncomeModal(true);
+  };
+
+  const handleApplyIncomePayment = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!profile || !user || !selectedIncomeForPayment) return;
+    const targetLoan = loans.find((l) => l.id === applyIncomeTargetLoanId);
+    if (!targetLoan) {
+      setFormError("Please select an active loan to apply payment to.");
+      return;
+    }
+    const amount = Number(applyIncomeAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setFormError("Enter a valid payment amount.");
+      return;
+    }
+    if (amount > selectedIncomeForPayment.amount) {
+      setFormError(
+        `Amount cannot exceed available income of ${money(selectedIncomeForPayment.amount)}.`,
+      );
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const targetPayments = payments
+        .filter(
+          (p) =>
+            p.loanId === targetLoan.id &&
+            (p.status === "upcoming" || p.status === "overdue" || p.status === "disputed"),
+        )
+        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      const nextPayment = targetPayments[0];
+      const isFullPayoff =
+        amount >= (targetLoan.remainingBalance || targetLoan.totalRepayment);
+
+      let paymentDocId = nextPayment?.id;
+      if (nextPayment) {
+        await updateDoc(doc(db, "loanPayments", nextPayment.id), {
+          amountPaid: amount,
+          paidAt: new Date().toISOString(),
+          paidBy: user.uid,
+          paidByName: profile.name,
+          receiptImage: selectedIncomeForPayment.receiptImage || null,
+          receiptNotes: `Paid from farm harvest/sales income: ${selectedIncomeForPayment.description}${
+            applyIncomeNotes.trim() ? ` (${applyIncomeNotes.trim()})` : ""
+          }`,
+          status: isFullPayoff || amount >= nextPayment.amountDue ? "paid" : "partial",
+          isFullPayoff: isFullPayoff || undefined,
+          paidFromIncomeId: selectedIncomeForPayment.id,
+          disputeReason: null,
+          disputedAt: null,
+          disputedBy: null,
+        });
+      } else {
+        const created = await addDoc(collection(db, "loanPayments"), {
+          loanId: targetLoan.id,
+          applicantId: profile.uid,
+          memberId: profile.uid,
+          memberName: profile.name,
+          paymentNumber:
+            Math.max(
+              0,
+              ...payments
+                .filter((p) => p.loanId === targetLoan.id)
+                .map((p) => p.paymentNumber),
+            ) + 1,
+          dueDate: new Date().toISOString(),
+          amountDue: amount,
+          amountPaid: amount,
+          status: "paid",
+          isEarlyRepayment: true,
+          isFullPayoff: isFullPayoff || undefined,
+          paidAt: new Date().toISOString(),
+          paidBy: user.uid,
+          paidByName: profile.name,
+          receiptImage: selectedIncomeForPayment.receiptImage || null,
+          receiptNotes: `Paid from farm harvest/sales income: ${selectedIncomeForPayment.description}${
+            applyIncomeNotes.trim() ? ` (${applyIncomeNotes.trim()})` : ""
+          }`,
+          paidFromIncomeId: selectedIncomeForPayment.id,
+          createdAt: new Date().toISOString(),
+        });
+        paymentDocId = created.id;
+      }
+
+      // Record matching expense in loanIncomeExpenses
+      await addDoc(collection(db, "loanIncomeExpenses"), {
+        userId: profile.uid,
+        userName: profile.name,
+        type: "expense",
+        category: "Loan Payment",
+        description: `Auto-payment for loan ${targetLoan.id} deducted from farm income (${selectedIncomeForPayment.description})`,
+        amount,
+        date: new Date().toISOString(),
+        loanId: targetLoan.id,
+        receiptImage: selectedIncomeForPayment.receiptImage || null,
+        appliedFromIncomeId: selectedIncomeForPayment.id,
+        createdAt: new Date().toISOString(),
+        createdBy: user.uid,
+      });
+
+      // Update source income document
+      await updateDoc(doc(db, "loanIncomeExpenses", selectedIncomeForPayment.id), {
+        appliedToLoanId: targetLoan.id,
+        appliedAmount: (selectedIncomeForPayment.appliedAmount || 0) + amount,
+      });
+
+      await writeAuditLog({
+        actor: { uid: user.uid, name: profile.name, role: profile.role },
+        action: "income_applied_to_loan",
+        entityType: "loan_payment",
+        entityId: paymentDocId || targetLoan.id,
+        applicationId: targetLoan.id,
+        newStatus: "paid",
+        notes: `${profile.name} applied ${money(amount)} from farm income "${selectedIncomeForPayment.description}" to loan ${targetLoan.id}.`,
+      });
+
+      await broadcastNotification(
+        "admin",
+        "payment_received",
+        "Loan payment from farm income",
+        `${profile.name} applied ${money(amount)} from farm income towards loan ${targetLoan.id}.`,
+      );
+
+      setShowApplyIncomeModal(false);
+      setSelectedIncomeForPayment(null);
+      setApplyIncomeAmount("");
+      setApplyIncomeNotes("");
+    } catch (error) {
+      console.error("Failed to apply income as payment:", error);
+      setFormError("Unable to apply income as loan payment.");
     } finally {
       setSubmitting(false);
     }
@@ -943,12 +1305,81 @@ export const LoanApplication: React.FC = () => {
             )}
           </header>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <SummaryCard label="Active Loans" value={String(activeLoansCount)} icon={<Landmark size={18} />} />
-            <SummaryCard label="Outstanding Balance" value={money(totalOutstanding)} icon={<DollarSign size={18} />} />
-            <SummaryCard label="Next Due" value={nextDueDate ? formatDate(nextDueDate) : "—"} icon={<Calendar size={18} />} />
-            <SummaryCard label="Net Profit" value={money(displayedNetProfit)} positive={displayedNetProfit >= 0} icon={displayedNetProfit >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />} />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <SummaryCard
+              label="Active Loans"
+              value={String(scopedActiveLoansCount)}
+              icon={<Landmark size={18} />}
+              subtitle={
+                selectedLedgerLoanId !== "all"
+                  ? `Loan: ${selectedLedgerLoanId}`
+                  : `${relevantLoans.length} total applications`
+              }
+            />
+            <SummaryCard
+              label="Outstanding Balance"
+              value={money(scopedTotalOutstanding)}
+              icon={<DollarSign size={18} />}
+              subtitle={
+                selectedLedgerLoanId !== "all"
+                  ? `of ${money(scopedTotalObligation)} obligation`
+                  : "Across active loans"
+              }
+            />
+            <SummaryCard
+              label="Next Due"
+              value={scopedNextDuePayment ? formatDate(scopedNextDuePayment.dueDate) : "—"}
+              icon={<Calendar size={18} />}
+              subtitle={
+                scopedNextDuePayment
+                  ? `${money(scopedNextDuePayment.amountDue)} due`
+                  : "All dues up to date"
+              }
+            />
+            <SummaryCard
+              label="Net Farm Profit"
+              value={money(displayedNetProfit)}
+              positive={displayedNetProfit >= 0}
+              icon={
+                displayedNetProfit >= 0 ? (
+                  <TrendingUp size={18} />
+                ) : (
+                  <TrendingDown size={18} />
+                )
+              }
+              subtitle={`Income ${money(visibleLedgerIncome)} · Exp ${money(visibleLedgerExpenses)}`}
+            />
+            <SummaryCard
+              label="Loan Profitability (ROI)"
+              value={profitabilityMetrics.formattedRatio}
+              positive={profitabilityMetrics.positive}
+              icon={<Percent size={18} />}
+              badge={{
+                text: profitabilityMetrics.label,
+                color: profitabilityMetrics.color,
+                bgColor: profitabilityMetrics.bgColor,
+              }}
+              subtitle={
+                scopedTotalObligation > 0
+                  ? `Profit / ${money(scopedTotalObligation)} loan`
+                  : "No loan obligation"
+              }
+            />
           </div>
+
+          {selectedLedgerLoanId !== "all" && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900 shadow-sm">
+              <span className="font-medium">
+                🎯 Viewing dynamic overview for <b>{selectedLedgerLoanId}</b>. All top cards reflect this loan's balance, due date, profit, and ROI.
+              </span>
+              <button
+                onClick={() => setSelectedLedgerLoanId("all")}
+                className="rounded-lg bg-emerald-700 px-3 py-1 font-bold text-white hover:bg-emerald-800"
+              >
+                Reset to All Loans
+              </button>
+            </div>
+          )}
 
           <div className="flex gap-2 border-b border-slate-200">
             {[
@@ -1489,9 +1920,13 @@ export const LoanApplication: React.FC = () => {
               onAdd={(type) => {
                 setIncomeExpenseType(type);
                 setIeCategory("");
+                setApplyDirectlyToLoan(false);
+                setIncomeTargetLoanId("");
+                setIncomeApplyAmount("");
                 setFormError(null);
                 setShowIncomeExpenseModal(true);
               }}
+              onApplyIncomeToLoan={openApplyIncomeModal}
             />
           )}
         </div>
@@ -1560,22 +1995,110 @@ export const LoanApplication: React.FC = () => {
         </Modal>
       )}
 
-      {showPaymentModal && paymentForEntry && (
-        <Modal title={`Payment ${paymentForEntry.paymentNumber}`} onClose={() => setShowPaymentModal(false)}>
-          <form onSubmit={handlePayment} className="space-y-4">
-            <p className="text-xs text-slate-500">Due {formatDate(paymentForEntry.dueDate)} · {money(paymentForEntry.amountDue)}</p>
-            {paymentForEntry.status === "disputed" && (
-              <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-800">
-                <p className="font-bold">Admin requested a correction</p>
-                <p className="mt-1">
-                  {paymentForEntry.disputeReason ||
-                    "Please upload a corrected receipt and explain the correction."}
-                </p>
+      {showPaymentModal && paymentForEntry && (() => {
+        const currentLoan = loans.find((l) => l.id === paymentForLoan);
+        const remainingBal = currentLoan?.remainingBalance || paymentForEntry.amountDue;
+        const numPayAmount = Number(payAmount);
+
+        return (
+          <Modal title={`Payment ${paymentForEntry.paymentNumber} · ${paymentForLoan || ""}`} onClose={() => setShowPaymentModal(false)}>
+            <form onSubmit={handlePayment} className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-3 text-xs">
+                <span className="text-slate-600">
+                  Scheduled Due: <b>{money(paymentForEntry.amountDue)}</b> on {formatDate(paymentForEntry.dueDate)}
+                </span>
+                <span className="text-slate-600">
+                  Total Remaining: <b className="text-emerald-800">{money(remainingBal)}</b>
+                </span>
               </div>
-            )}
-            <Field label="Amount paid">
-              <input type="number" min="0.01" step="0.01" value={payAmount} onChange={(event) => setPayAmount(event.target.value)} className={inputClassName} />
-            </Field>
+
+              {paymentForEntry.status === "disputed" && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-800">
+                  <p className="font-bold">Admin requested a correction</p>
+                  <p className="mt-1">
+                    {paymentForEntry.disputeReason ||
+                      "Please upload a corrected receipt and explain the correction."}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <p className="mb-1.5 text-xs font-bold text-slate-600">Quick Payment Options</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPayAmount(String(paymentForEntry.amountDue))}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition ${
+                      numPayAmount === paymentForEntry.amountDue
+                        ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-600/20"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    Scheduled: {money(paymentForEntry.amountDue)}
+                  </button>
+                  {remainingBal > paymentForEntry.amountDue && (
+                    <button
+                      type="button"
+                      onClick={() => setPayAmount(String(remainingBal))}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition ${
+                        numPayAmount === remainingBal
+                          ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-600/20"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      🚀 Pay Full Balance: {money(remainingBal)}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <Field label="Amount paid (Flexible: lower, higher, or full balance)">
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                    ₱
+                  </span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={payAmount}
+                    onChange={(event) => setPayAmount(event.target.value)}
+                    className={`${inputClassName} pl-7`}
+                    placeholder="0.00"
+                  />
+                </div>
+              </Field>
+
+              {numPayAmount > 0 && (
+                <div className="text-xs">
+                  {numPayAmount >= remainingBal ? (
+                    <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-emerald-800">
+                      <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                      <span>
+                        <b>Full Payoff</b>: Paying {money(numPayAmount)} will completely settle all remaining balance on this loan upon admin verification.
+                      </span>
+                    </div>
+                  ) : numPayAmount > paymentForEntry.amountDue ? (
+                    <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-blue-800">
+                      <TrendingUp size={16} className="mt-0.5 shrink-0 text-blue-600" />
+                      <span>
+                        <b>Advance / Higher Payment</b>: Paying {money(numPayAmount - paymentForEntry.amountDue)} extra. The excess directly reduces your remaining loan principal.
+                      </span>
+                    </div>
+                  ) : numPayAmount < paymentForEntry.amountDue ? (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-amber-800">
+                      <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-600" />
+                      <span>
+                        <b>Partial Payment</b>: Paying {money(numPayAmount)} of {money(paymentForEntry.amountDue)}. The remaining installment balance will be due before next cycle.
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-500">
+                      Paying the standard scheduled monthly installment.
+                    </p>
+                  )}
+                </div>
+              )}
             <Field label="Receipt image (required)">
               <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 p-3 text-xs text-slate-500">
                 <Upload size={16} /> {payReceipt?.name || "Choose receipt"}
@@ -1596,7 +2119,8 @@ export const LoanApplication: React.FC = () => {
             />
           </form>
         </Modal>
-      )}
+        );
+      })()}
 
       {earlyRepaymentLoan && (
         <Modal
@@ -1681,6 +2205,67 @@ export const LoanApplication: React.FC = () => {
               <Field label="Amount"><input type="number" min="0.01" step="0.01" value={ieAmount} onChange={(event) => setIeAmount(event.target.value)} className={inputClassName} /></Field>
               <Field label="Date"><input type="date" value={ieDate} onChange={(event) => setIeDate(event.target.value)} className={inputClassName} /></Field>
             </div>
+
+            {incomeExpenseType === "income" && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-emerald-900">
+                  <input
+                    type="checkbox"
+                    checked={applyDirectlyToLoan}
+                    onChange={(e) => {
+                      setApplyDirectlyToLoan(e.target.checked);
+                      if (e.target.checked && !incomeTargetLoanId) {
+                        const defaultId =
+                          selectedLedgerLoanId !== "all"
+                            ? selectedLedgerLoanId
+                            : loans.find((l) => l.status === "active")?.id || "";
+                        setIncomeTargetLoanId(defaultId);
+                        setIncomeApplyAmount(ieAmount);
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-emerald-300 text-emerald-700 focus:ring-emerald-600"
+                  />
+                  <span>Apply this income directly towards loan repayment</span>
+                </label>
+
+                {applyDirectlyToLoan && (
+                  <div className="space-y-3 border-t border-emerald-200/60 pt-3">
+                    <Field label="Select Active Loan to Pay">
+                      <select
+                        value={incomeTargetLoanId}
+                        onChange={(e) => setIncomeTargetLoanId(e.target.value)}
+                        className={inputClassName}
+                      >
+                        <option value="">Select an active loan</option>
+                        {loans
+                          .filter((l) => l.status === "active")
+                          .map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.id} · {l.purpose} (Balance: {money(l.remainingBalance || 0)})
+                            </option>
+                          ))}
+                      </select>
+                    </Field>
+                    <Field label="Amount to apply towards loan payment">
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        max={ieAmount || undefined}
+                        value={incomeApplyAmount}
+                        onChange={(e) => setIncomeApplyAmount(e.target.value)}
+                        placeholder={`Up to ${ieAmount || "0.00"}`}
+                        className={inputClassName}
+                      />
+                    </Field>
+                    <p className="text-[11px] text-emerald-800">
+                      💡 Applying income to a loan automatically creates the loan payment and a corresponding 'Loan Payment' expense in your ledger to keep net farm profit accurate.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <Field label="Receipt (optional)">
               <input type="file" accept="image/*" onChange={(event) => setIeReceipt(event.target.files?.[0] || null)} className={`${inputClassName} file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-emerald-700`} />
             </Field>
@@ -1689,14 +2274,192 @@ export const LoanApplication: React.FC = () => {
           </form>
         </Modal>
       )}
+
+      {showApplyIncomeModal && selectedIncomeForPayment && (() => {
+        const targetLoan = loans.find((l) => l.id === applyIncomeTargetLoanId);
+        const targetUpcoming = payments
+          .filter(
+            (p) =>
+              p.loanId === applyIncomeTargetLoanId &&
+              (p.status === "upcoming" || p.status === "overdue" || p.status === "disputed"),
+          )
+          .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0];
+        const numApply = Number(applyIncomeAmount);
+
+        return (
+          <Modal
+            title="Apply Farm Income as Loan Payment"
+            onClose={() => {
+              setShowApplyIncomeModal(false);
+              setSelectedIncomeForPayment(null);
+            }}
+          >
+            <form onSubmit={handleApplyIncomePayment} className="space-y-4">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 space-y-1 text-xs text-emerald-900">
+                <p className="font-bold">Source Farm Income Entry</p>
+                <div className="flex justify-between">
+                  <span>{selectedIncomeForPayment.description} ({selectedIncomeForPayment.category})</span>
+                  <b className="text-emerald-800">{money(selectedIncomeForPayment.amount)}</b>
+                </div>
+                <p className="text-[11px] text-emerald-700">Date recorded: {formatDate(selectedIncomeForPayment.date)}</p>
+              </div>
+
+              <Field label="Select Loan to Pay">
+                <select
+                  value={applyIncomeTargetLoanId}
+                  onChange={(e) => setApplyIncomeTargetLoanId(e.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Select an active loan</option>
+                  {loans
+                    .filter((l) => l.status === "active")
+                    .map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.id} · {l.purpose} (Balance: {money(l.remainingBalance || 0)})
+                      </option>
+                    ))}
+                </select>
+              </Field>
+
+              {targetLoan && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2.5 text-xs">
+                    <span className="text-slate-600">
+                      Remaining Debt: <b>{money(targetLoan.remainingBalance || 0)}</b>
+                    </span>
+                    {targetUpcoming && (
+                      <span className="text-slate-600">
+                        Next Due: <b>{money(targetUpcoming.amountDue)}</b> ({formatDate(targetUpcoming.dueDate)})
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="mb-1.5 text-xs font-bold text-slate-600">Quick Fill</p>
+                    <div className="flex flex-wrap gap-2">
+                      {targetUpcoming && (
+                        <button
+                          type="button"
+                          onClick={() => setApplyIncomeAmount(String(Math.min(selectedIncomeForPayment.amount, targetUpcoming.amountDue)))}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          Next Due: {money(targetUpcoming.amountDue)}
+                        </button>
+                      )}
+                      {targetLoan.remainingBalance <= selectedIncomeForPayment.amount && (
+                        <button
+                          type="button"
+                          onClick={() => setApplyIncomeAmount(String(targetLoan.remainingBalance))}
+                          className="rounded-lg border border-emerald-700 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800"
+                        >
+                          Full Payoff: {money(targetLoan.remainingBalance)}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setApplyIncomeAmount(String(selectedIncomeForPayment.amount))}
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        All Income: {money(selectedIncomeForPayment.amount)}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Field label="Amount to apply from this income">
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  max={selectedIncomeForPayment.amount}
+                  value={applyIncomeAmount}
+                  onChange={(e) => setApplyIncomeAmount(e.target.value)}
+                  className={inputClassName}
+                />
+              </Field>
+
+              {numApply > 0 && targetLoan && (
+                <div className="text-xs">
+                  {numApply >= targetLoan.remainingBalance ? (
+                    <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-800">
+                      <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                      <span><b>Full Payoff</b>: This covers the remaining debt of {money(targetLoan.remainingBalance)}.</span>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-500">
+                      Applying {money(numApply)} towards loan {targetLoan.id}. A matching 'Loan Payment' expense will be added to your ledger.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <Field label="Notes (optional)">
+                <textarea
+                  value={applyIncomeNotes}
+                  onChange={(e) => setApplyIncomeNotes(e.target.value)}
+                  rows={2}
+                  className={inputClassName}
+                  placeholder="e.g. Paid directly from corn harvest revenue"
+                />
+              </Field>
+
+              {formError && <ErrorText text={formError} />}
+              <SubmitButton loading={submitting} label="Apply Payment to Loan" />
+            </form>
+          </Modal>
+        );
+      })()}
     </div>
   );
 };
 
-const SummaryCard: React.FC<{ label: string; value: string; icon: React.ReactNode; positive?: boolean }> = ({ label, value, icon, positive = true }) => (
-  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className={`mb-2 flex items-center gap-2 ${positive ? "text-emerald-700" : "text-red-600"}`}>{icon}<span className="text-[10px] font-bold uppercase text-slate-400">{label}</span></div>
-    <p className={`text-lg font-extrabold ${positive ? "text-slate-900" : "text-red-700"}`}>{value}</p>
+const SummaryCard: React.FC<{
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  positive?: boolean;
+  subtitle?: React.ReactNode;
+  badge?: {
+    text: string;
+    color: string;
+    bgColor: string;
+  };
+}> = ({ label, value, icon, positive = true, subtitle, badge }) => (
+  <div className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div>
+      <div
+        className={`mb-2 flex items-center justify-between ${
+          positive ? "text-emerald-700" : "text-red-600"
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="text-[10px] font-bold uppercase text-slate-400">
+            {label}
+          </span>
+        </div>
+        {badge && (
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase ${badge.bgColor}`}
+          >
+            {badge.text}
+          </span>
+        )}
+      </div>
+      <p
+        className={`text-lg font-extrabold ${
+          positive ? "text-slate-900" : "text-red-700"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+    {subtitle && (
+      <div className="mt-2 border-t border-slate-100 pt-1.5 text-[11px] font-medium text-slate-500">
+        {subtitle}
+      </div>
+    )}
   </div>
 );
 
@@ -1719,6 +2482,7 @@ const LedgerSection: React.FC<{
   categoryOptions: string[];
   onCategoryChange: (category: string) => void;
   onAdd: (type: "income" | "expense") => void;
+  onApplyIncomeToLoan?: (entry: LoanIncomeExpense) => void;
 }> = ({
   entries,
   loans,
@@ -1730,6 +2494,7 @@ const LedgerSection: React.FC<{
   categoryOptions,
   onCategoryChange,
   onAdd,
+  onApplyIncomeToLoan,
 }) => {
   const balanceTotal = totalIncome + totalExpenses;
   const incomeWidth =
@@ -1817,10 +2582,74 @@ const LedgerSection: React.FC<{
       </div>
     </div>
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-400"><tr><th className="p-3">Date</th><th className="p-3">Type</th><th className="p-3">Category</th><th className="p-3">Description</th><th className="p-3 text-right">Amount</th></tr></thead><tbody className="divide-y divide-slate-100">
-        {entries.map((entry) => <tr key={entry.id}><td className="p-3">{formatDate(entry.date)}</td><td className={`p-3 font-bold ${entry.type === "income" ? "text-emerald-700" : "text-red-700"}`}>{entry.type}</td><td className="p-3">{entry.category}</td><td className="p-3">{entry.description}</td><td className="p-3 text-right font-bold">{money(entry.amount)}</td></tr>)}
-        {entries.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400">No ledger entries yet.</td></tr>}
-      </tbody></table>
+      <table className="w-full text-left text-xs">
+        <thead className="bg-slate-50 text-[10px] uppercase text-slate-400">
+          <tr>
+            <th className="p-3">Date</th>
+            <th className="p-3">Type</th>
+            <th className="p-3">Category</th>
+            <th className="p-3">Description</th>
+            <th className="p-3 text-right">Amount</th>
+            <th className="p-3 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {entries.map((entry) => (
+            <tr key={entry.id} className="hover:bg-slate-50/50">
+              <td className="p-3">{formatDate(entry.date)}</td>
+              <td className={`p-3 font-bold ${entry.type === "income" ? "text-emerald-700" : "text-red-700"}`}>
+                {entry.type}
+              </td>
+              <td className="p-3">
+                <span className="rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                  {entry.category}
+                </span>
+              </td>
+              <td className="p-3">
+                <div className="max-w-xs truncate text-slate-800" title={entry.description}>
+                  {entry.description}
+                </div>
+                {entry.appliedToLoanId && (
+                  <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
+                    <CheckCircle2 size={11} /> Applied to {entry.appliedToLoanId}
+                  </span>
+                )}
+                {entry.appliedFromIncomeId && (
+                  <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700">
+                    Auto-deducted from income
+                  </span>
+                )}
+              </td>
+              <td className="p-3 text-right font-bold text-slate-900">
+                {money(entry.amount)}
+              </td>
+              <td className="p-3 text-right">
+                {entry.type === "income" && onApplyIncomeToLoan && (
+                  entry.appliedToLoanId ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                      <CheckCircle2 size={11} /> Paid Loan
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => onApplyIncomeToLoan(entry)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:bg-emerald-800"
+                    >
+                      <DollarSign size={12} /> Pay Loan
+                    </button>
+                  )
+                )}
+              </td>
+            </tr>
+          ))}
+          {entries.length === 0 && (
+            <tr>
+              <td colSpan={6} className="p-8 text-center text-slate-400">
+                No ledger entries yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
     </div>
   );

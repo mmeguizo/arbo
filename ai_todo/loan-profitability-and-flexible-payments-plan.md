@@ -1,6 +1,6 @@
 # Phase 22: Loan Profitability Tracking, Dynamic KPIs & Flexible Payments — Worker Spec
 
-> **Status**: 📋 READY FOR WORKER  
+> **Status**: ✅ COMPLETED  
 > **Created by**: Planner (2026-10-21)  
 > **Goal**: 
 > 1. Allow users to use posted farm income directly as loan payments and automatically sync numbers between the loan and the Income & Expenses ledger.
@@ -168,15 +168,15 @@ Update the payment modal in `LoanApplication.tsx`:
 
 ## Verification Checklist
 
-- [ ] `npm run build` succeeds with 0 errors.
-- [ ] Selecting "All Loans" shows combined active loans, combined balance, earliest next due, overall profit, and overall ROI ratio.
-- [ ] Selecting a specific loan in the dropdown immediately updates:
+- [x] `npm run build` succeeds with 0 errors.
+- [x] Selecting "All Loans" shows combined active loans, combined balance, earliest next due, overall profit, and overall ROI ratio.
+- [x] Selecting a specific loan in the dropdown immediately updates:
   - Active Loans to 1 (or 0)
   - Outstanding Balance to that loan's remaining balance
   - Next Due to that loan's specific next installment
   - Net Profit to that loan's specific profit
   - Profitability Card to that loan's ROI status
-- [ ] Submitting a payment with a higher amount credits the excess to remaining balance.
-- [ ] Submitting a payment with a lower amount marks payment as partial.
-- [ ] Choosing "Pay Full Balance" marks loan as completed with zero remaining balance.
-- [ ] Clicking "Pay Loan With Income" on an income entry records the loan payment, generates the matching ledger expense, and updates the numbers in real time.
+- [x] Submitting a payment with a higher amount credits the excess to remaining balance.
+- [x] Submitting a payment with a lower amount marks payment as partial.
+- [x] Choosing "Pay Full Balance" marks loan as completed with zero remaining balance.
+- [x] Clicking "Pay Loan With Income" on an income entry records the loan payment, generates the matching ledger expense, and updates the numbers in real time.

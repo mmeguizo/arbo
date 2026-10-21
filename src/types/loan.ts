@@ -94,6 +94,8 @@ export interface LoanPayment {
   verifiedBy?: string;
   verifiedByName?: string;
   verifiedAt?: string;
+  paidFromIncomeId?: string;
+  isFullPayoff?: boolean;
   createdAt: string;
 }
 
@@ -108,6 +110,9 @@ export interface LoanIncomeExpense {
   date: string;
   loanId?: string;
   receiptImage?: string;
+  appliedToLoanId?: string;
+  appliedAmount?: number;
+  appliedFromIncomeId?: string;
   createdAt: string;
   createdBy: string;
 }
