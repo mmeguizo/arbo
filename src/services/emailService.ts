@@ -39,9 +39,15 @@ export const sendOtpEmail = async ({
         user_id: publicKey,
         template_params: {
           to_email: toEmail,
+          email: toEmail,
+          recipient: toEmail,
           otp_code: otpCode,
+          otp: otpCode,
+          code: otpCode,
+          passcode: otpCode,
           expiry_minutes: expiryMinutes,
           app_name: "ARBO Support — Department of Agrarian Reform",
+          message: `Your ARBO Support verification code is ${otpCode}. This code is valid for ${expiryMinutes} minutes. If you did not request this code, please secure your account immediately.`,
         },
       }),
     });
