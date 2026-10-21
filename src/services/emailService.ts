@@ -1,6 +1,6 @@
 /**
  * Email Service for ARBO Web App
- * Dispatches transactional OTP emails using EmailJS REST API
+ * Dispatches transactional OTP & Password Reset emails using EmailJS REST API
  * (https://api.emailjs.com/api/v1.0/email/send)
  */
 
@@ -55,6 +55,68 @@ export const sendOtpEmail = async ({
     if (!response.ok) {
       const errText = await response.text();
       console.error("EmailJS dispatch failed:", errText);
+      return { success: false, error: errText || "Failed to send email via EmailJS." };
+    }
+
+    return { success: true, isDevMode: false };
+  } catch (err: any) {
+    console.error("EmailJS network error:", err);
+    return { success: false, error: err.message || "Network error while sending email." };
+  }
+};
+
+interface SendResetEmailParams {
+  toEmail: string;
+  toName?: string;
+  resetUrl?: string;
+}
+
+export const sendPasswordResetNotificationEmail = async ({
+  toEmail,
+  toName = "User",
+  resetUrl = window.location.origin + "/login",
+}: SendResetEmailParams): Promise<{ success: boolean; isDevMode?: boolean; error?: string }> => {
+  const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+  const templateId =
+    import.meta.env.VITE_EMAILJS_RESET_TEMPLATE_ID ||
+    import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+  const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+  if (!serviceId || !templateId || !publicKey) {
+    console.warn(
+      `[EmailJS Dev Mode] VITE_EMAILJS credentials not set. Simulated password reset for ${toEmail}`
+    );
+    return { success: true, isDevMode: true };
+  }
+
+  try {
+    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        service_id: serviceId,
+        template_id: templateId,
+        user_id: publicKey,
+        template_params: {
+          to_email: toEmail,
+          email: toEmail,
+          to_name: toName,
+          name: toName,
+          recipient: toEmail,
+          reset_url: resetUrl,
+          link: resetUrl,
+          app_name: "ARBO Support — Department of Agrarian Reform",
+          subject: "Password Reset Request — ARBO Support",
+          message: `Hello ${toName}, a password reset was requested for your account (${toEmail}). Please use the following link to reset your password: ${resetUrl}`,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("EmailJS password reset dispatch failed:", errText);
       return { success: false, error: errText || "Failed to send email via EmailJS." };
     }
 

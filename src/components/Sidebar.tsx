@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { NotificationBell } from "./NotificationBell";
+import { ChangePasswordModal } from "./ChangePasswordModal";
 import {
   LayoutDashboard,
   FileText,
@@ -24,6 +25,7 @@ import {
   Cog,
   UserSearch,
   Tractor,
+  KeyRound,
 } from "lucide-react";
 
 interface NavItem {
@@ -48,6 +50,7 @@ export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // Helper to check active state
@@ -382,6 +385,13 @@ export const Sidebar: React.FC = () => {
             <NotificationBell />
           </div>
           <button
+            onClick={() => setIsChangePasswordOpen(true)}
+            className="flex w-full items-center space-x-3 px-4 py-2.5 rounded-lg text-xs font-medium text-emerald-200 hover:bg-emerald-800/60 hover:text-white transition-colors bg-emerald-950 mb-2 cursor-pointer"
+          >
+            <KeyRound size={14} className="text-amber-400 shrink-0" />
+            <span>Change Password</span>
+          </button>
+          <button
             onClick={handleLogout}
             className="flex w-full items-center space-x-3 px-4 py-2.5 rounded-lg text-xs font-medium text-emerald-200 hover:bg-red-900/40 hover:text-red-200 transition-colors bg-emerald-950"
           >
@@ -390,6 +400,8 @@ export const Sidebar: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <ChangePasswordModal isOpen={isChangePasswordOpen} onClose={() => setIsChangePasswordOpen(false)} />
 
       {/* Backdrop for mobile */}
       {isOpen && (

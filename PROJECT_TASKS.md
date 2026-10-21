@@ -224,3 +224,13 @@
 - [x] 18.6 `Login.tsx` — Implement two-stage authentication flow with auto-advancing 6-digit input cells, paste support, timers, and dev banner
 - [x] 18.7 `.env.example` — Document EmailJS environment variable keys
 - [x] 18.8 Verification — `npm run build` passes with 0 TypeScript and bundle errors
+
+
+## Phase 19: In-App Password Management & Reset (2026-10-21)
+
+- [x] 19.1 `ChangePasswordModal.tsx` — Self-service password change modal for any logged-in user with credential re-authentication
+- [x] 19.2 `Sidebar.tsx` — Integrated "Change Password" button in user profile footer for all roles
+- [x] 19.3 `Login.tsx` — Added In-App Password Reset screen (`mode=resetPassword`) and EmailJS reset notification dispatch
+- [x] 19.4 `AdminUsers.tsx` — Updated Admin reset action with in-app reset link and EmailJS delivery
+- [x] 19.5 `emailService.ts` — Added `sendPasswordResetNotificationEmail` with multi-template support
+- [x] 19.6 Verification — `npm run build` passes with 0 TypeScript and bundle errors

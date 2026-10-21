@@ -15,6 +15,7 @@ import {
   sendPasswordResetEmail,
 } from "firebase/auth";
 import { db, firebaseConfig } from "../firebase/config";
+import { sendPasswordResetNotificationEmail } from "../services/emailService";
 import {
   UserPlus,
   Users,
@@ -386,7 +387,14 @@ export const AdminUsers: React.FC = () => {
   const handleResetPassword = async (emailToReset: string) => {
     try {
       const auth = getAuth();
-      await sendPasswordResetEmail(auth, emailToReset);
+      await sendPasswordResetEmail(auth, emailToReset, {
+        url: `${window.location.origin}/login`,
+        handleCodeInApp: true,
+      });
+      await sendPasswordResetNotificationEmail({
+        toEmail: emailToReset,
+        resetUrl: `${window.location.origin}/login`,
+      });
       await writeAuditLog({
         actor: profile,
         action: "password_reset_email_requested",
@@ -395,7 +403,7 @@ export const AdminUsers: React.FC = () => {
       });
       setFeedback({
         type: "success",
-        msg: `Password reset email sent to ${emailToReset}`,
+        msg: `Password reset email sent to ${emailToReset}. The user can follow the link to set their new password.`,
       });
     } catch (err) {
       console.error("Failed to send reset email", err);
