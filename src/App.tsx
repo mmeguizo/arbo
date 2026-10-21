@@ -33,7 +33,7 @@ import { FarmMonitoring } from "./pages/FarmMonitoring";
 
 // A small gatekeeper component that routes authenticated users to their natural landing page
 const AuthRedirect: React.FC = () => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, isOtpVerified } = useAuth();
 
   if (loading) {
     return (
@@ -43,7 +43,7 @@ const AuthRedirect: React.FC = () => {
     );
   }
 
-  if (!user) {
+  if (!user || !isOtpVerified) {
     return <Navigate to="/login" replace />;
   }
 

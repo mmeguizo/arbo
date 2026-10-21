@@ -212,3 +212,15 @@
 - [x] 17.13 `LoanApplication.tsx` — Add newest-first loan views, active-loan health card, next-payment CTA, and lifetime snapshot
 - [x] 17.14 `LoanApplication.tsx` — Add loan search/status filters and income-versus-expense ledger visualization/category filtering
 - [x] 17.15 Documentation and verification — Update handover/specification and pass `npm run build` plus `git diff --check`
+
+
+## Phase 18: Email OTP Two-Factor Authentication (2FA) (2026-10-21)
+
+- [x] 18.1 `emailService.ts` — Create EmailJS REST API email dispatcher with automatic Dev Mode fallback
+- [x] 18.2 `otpService.ts` — Implement Firestore-backed OTP generation, expiration, 5-attempt rate limiting, and resend cooldown
+- [x] 18.3 `AuthContext.tsx` — Add `isOtpVerified` and `setSessionOtpVerified` with `sessionStorage` session persistence
+- [x] 18.4 `ProtectedRoute.tsx` — Enforce 2FA verification before granting access to protected routes
+- [x] 18.5 `App.tsx` — Enforce OTP verification in `AuthRedirect`
+- [x] 18.6 `Login.tsx` — Implement two-stage authentication flow with auto-advancing 6-digit input cells, paste support, timers, and dev banner
+- [x] 18.7 `.env.example` — Document EmailJS environment variable keys
+- [x] 18.8 Verification — `npm run build` passes with 0 TypeScript and bundle errors

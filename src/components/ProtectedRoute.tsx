@@ -22,7 +22,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   allowedRoles,
 }) => {
-  const { user, profile, loading, logout } = useAuth();
+  const { user, profile, loading, isOtpVerified, logout } = useAuth();
 
   if (loading) {
     return (
@@ -55,6 +55,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         </div>
       </div>
     );
+  }
+
+  // 2FA OTP Verification Gate
+  if (!isOtpVerified) {
+    return <Navigate to="/login" state={{ requireOtp: true }} replace />;
   }
 
   // Check if account has been explicitly disabled by an Admin

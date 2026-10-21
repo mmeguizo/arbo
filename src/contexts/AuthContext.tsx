@@ -26,6 +26,8 @@ interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  isOtpVerified: boolean;
+  setSessionOtpVerified: (verified: boolean) => void;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -38,6 +40,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isOtpVerified, setIsOtpVerified] = useState<boolean>(false);
+
+  const setSessionOtpVerified = (verified: boolean) => {
+    setIsOtpVerified(verified);
+    if (user) {
+      if (verified) {
+        sessionStorage.setItem(`arbo_otp_verified_${user.uid}`, "true");
+      } else {
+        sessionStorage.removeItem(`arbo_otp_verified_${user.uid}`);
+      }
+    }
+  };
 
   const fetchProfile = async (currentUser: User) => {
     try {
@@ -77,6 +91,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
+        const verified =
+          sessionStorage.getItem(`arbo_otp_verified_${currentUser.uid}`) === "true";
+        setIsOtpVerified(verified);
+
         // Clean up previous listener before setting a new one
         if (unsubFirestore) unsubFirestore();
         const result = await fetchProfile(currentUser);
@@ -86,6 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         if (unsubFirestore) unsubFirestore();
         setProfile(null);
+        setIsOtpVerified(false);
         setLoading(false);
       }
     });
@@ -98,6 +117,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const logout = async () => {
     setLoading(true);
+    if (user) {
+      sessionStorage.removeItem(`arbo_otp_verified_${user.uid}`);
+    }
+    setIsOtpVerified(false);
     await signOut(auth);
     setUser(null);
     setProfile(null);
@@ -106,7 +129,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, logout, refreshProfile }}
+      value={{
+        user,
+        profile,
+        loading,
+        isOtpVerified,
+        setSessionOtpVerified,
+        logout,
+        refreshProfile,
+      }}
     >
       {!loading && children}
     </AuthContext.Provider>
