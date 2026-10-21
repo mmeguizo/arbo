@@ -27,13 +27,30 @@ export const generateOtpCode = (): string => {
 };
 
 /**
- * Creates a new OTP record in Firestore and sends it to the user's email
+ * Creates a new OTP record in Firestore and sends it to the user's email.
+ * Includes rapid debounce protection to prevent multiple simultaneous dispatches.
  */
 export const createAndSendOtp = async (
   uid: string,
-  email: string
+  email: string,
+  forceResend: boolean = false
 ): Promise<{ success: boolean; isDevMode?: boolean; error?: string; devOtp?: string }> => {
   try {
+    const docRef = doc(db, "auth_otps", uid);
+
+    // Debounce check: If not an explicit resend, avoid regenerating if sent within the last 15 seconds
+    if (!forceResend) {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const existing = snap.data() as AuthOtpDocument;
+        const elapsedSeconds = Math.floor((Date.now() - new Date(existing.createdAt).getTime()) / 1000);
+        if (!existing.used && elapsedSeconds < 15) {
+          console.log(`[OTP] Debounce guard: OTP already dispatched ${elapsedSeconds}s ago. Skipping duplicate generation.`);
+          return { success: true, isDevMode: false };
+        }
+      }
+    }
+
     const otpCode = generateOtpCode();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + EXPIRATION_MINUTES * 60 * 1000).toISOString();
@@ -48,7 +65,6 @@ export const createAndSendOtp = async (
       used: false,
     };
 
-    const docRef = doc(db, "auth_otps", uid);
     await setDoc(docRef, otpDoc);
 
     const emailResult = await sendOtpEmail({

@@ -234,3 +234,12 @@
 - [x] 19.4 `AdminUsers.tsx` — Updated Admin reset action with in-app reset link and EmailJS delivery
 - [x] 19.5 `emailService.ts` — Added `sendPasswordResetNotificationEmail` with multi-template support
 - [x] 19.6 Verification — `npm run build` passes with 0 TypeScript and bundle errors
+
+
+## Phase 20: Fix OTP Duplicate Dispatch & Admin ARB Role Assignment (2026-10-21)
+
+- [x] 20.1 `otpService.ts` — Added rapid 15s debounce guard to prevent duplicate OTP creation
+- [x] 20.2 `Login.tsx` — Added `otpSentForUidRef` and `isSendingOtpRef` dispatch guards to eliminate duplicate triggers during auth state transitions
+- [x] 20.3 `AdminUsers.tsx` — Added `arb` (Agrarian Reform Beneficiary) role option to the Create User modal
+- [x] 20.4 `AdminUsers.tsx` — Added User Role dropdown to the Edit Profile modal for all 5 roles
+- [x] 20.5 Verification — `npm run build` passes with 0 TypeScript and bundle errors

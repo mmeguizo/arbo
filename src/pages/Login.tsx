@@ -63,6 +63,8 @@ export const Login: React.FC = () => {
   const [pendingEmail, setPendingEmail] = useState<string>("");
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const otpSentForUidRef = useRef<string | null>(null);
+  const isSendingOtpRef = useRef<boolean>(false);
 
   // Check URL query parameters for password reset link action
   useEffect(() => {
@@ -90,11 +92,14 @@ export const Login: React.FC = () => {
     if (user && !isOtpVerified) {
       setStep("otp");
       setPendingUid(user.uid);
-      setPendingEmail(user.email || "");
-      // Trigger OTP dispatch if not already initiated
-      triggerOtpSend(user.uid, user.email || "");
+      const targetEmail = user.email || "";
+      setPendingEmail(targetEmail);
+      if (otpSentForUidRef.current !== user.uid) {
+        otpSentForUidRef.current = user.uid;
+        triggerOtpSend(user.uid, targetEmail);
+      }
     }
-  }, [user, isOtpVerified, step]);
+  }, [user, isOtpVerified]);
 
   // Resend cooldown timer
   useEffect(() => {
@@ -124,18 +129,24 @@ export const Login: React.FC = () => {
     return `${name[0]}${"*".repeat(Math.max(name.length - 2, 3))}${name[name.length - 1]}@${domain}`;
   };
 
-  const triggerOtpSend = async (uid: string, targetEmail: string) => {
+  const triggerOtpSend = async (uid: string, targetEmail: string, force = false) => {
+    if (isSendingOtpRef.current) return;
+    isSendingOtpRef.current = true;
     setError(null);
-    const result = await createAndSendOtp(uid, targetEmail);
-    if (!result.success) {
-      setError(result.error || "Failed to dispatch verification code.");
-      return;
-    }
+    try {
+      const result = await createAndSendOtp(uid, targetEmail, force);
+      if (!result.success) {
+        setError(result.error || "Failed to dispatch verification code.");
+        return;
+      }
 
-    setResendCooldown(60);
-    setExpirySeconds(600);
-    if (result.isDevMode && result.devOtp) {
-      setDevOtpBanner(result.devOtp);
+      setResendCooldown(60);
+      setExpirySeconds(600);
+      if (result.isDevMode && result.devOtp) {
+        setDevOtpBanner(result.devOtp);
+      }
+    } finally {
+      isSendingOtpRef.current = false;
     }
   };
 
@@ -241,7 +252,8 @@ export const Login: React.FC = () => {
       setPendingEmail(targetEmail);
 
       // Step 2: Trigger OTP generation & dispatch
-      await triggerOtpSend(targetUid, targetEmail);
+      otpSentForUidRef.current = targetUid;
+      await triggerOtpSend(targetUid, targetEmail, true);
       setStep("otp");
     } catch (err: any) {
       console.error("Login failure: ", err);
@@ -347,7 +359,7 @@ export const Login: React.FC = () => {
 
     setOtpDigits(["", "", "", "", "", ""]);
     inputRefs.current[0]?.focus();
-    await triggerOtpSend(pendingUid, pendingEmail);
+    await triggerOtpSend(pendingUid, pendingEmail, true);
   };
 
   const handleCancelOtp = async () => {

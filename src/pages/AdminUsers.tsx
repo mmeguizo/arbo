@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth, type UserRole } from "../contexts/AuthContext";
 import {
   collection,
   getDocs,
@@ -67,15 +67,23 @@ export const AdminUsers: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"staff" | "encoder" | "admin" | "arbo_head">(
-    "staff",
-  );
+  const [role, setRole] = useState<UserRole>("staff");
   const [province, setProvince] = useState("Negros Occidental");
   const [barangay, setBarangay] = useState("Isabela");
   const [municipality, setMunicipality] = useState("");
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<{
+    name: string;
+    role: UserRole;
+    address: string;
+    age: string;
+    contact: string;
+    province: string;
+    municipality: string;
+    barangay: string;
+  }>({
     name: "",
+    role: "staff",
     address: "",
     age: "",
     contact: "",
@@ -319,6 +327,7 @@ export const AdminUsers: React.FC = () => {
     setEditingUser(userProfile);
     setEditForm({
       name: userProfile.name,
+      role: userProfile.role,
       address: userProfile.address || "",
       age: userProfile.age?.toString() || "",
       contact: userProfile.contact || "",
@@ -571,24 +580,21 @@ export const AdminUsers: React.FC = () => {
                 <select
                   value={role}
                   onChange={(e) =>
-                    setRole(
-                      e.target.value as
-                        | "staff"
-                        | "encoder"
-                        | "admin"
-                        | "arbo_head",
-                    )
+                    setRole(e.target.value as UserRole)
                   }
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
                 >
+                  <option value="arb">
+                    ARB (Agrarian Reform Beneficiary / Farmer)
+                  </option>
+                  <option value="arbo_head">
+                    ARBO Head (Cooperative Leader)
+                  </option>
                   <option value="staff">
                     DAR Staff (Municipal Document Screener)
                   </option>
                   <option value="encoder">
                     DAR Encoder (Land Survey Data Specialist)
-                  </option>
-                  <option value="arbo_head">
-                    ARBO Head (Cooperative Leader)
                   </option>
                   <option value="admin">
                     District Administrator (Final Approver)
@@ -985,6 +991,28 @@ export const AdminUsers: React.FC = () => {
                   readOnly
                   className="block w-full rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  Assigned User Role
+                </label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      role: e.target.value as UserRole,
+                    }))
+                  }
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                >
+                  <option value="arb">ARB (Agrarian Reform Beneficiary / Farmer)</option>
+                  <option value="arbo_head">ARBO Head (Cooperative Leader)</option>
+                  <option value="staff">DAR Staff (Municipal Document Screener)</option>
+                  <option value="encoder">DAR Encoder (Land Survey Data Specialist)</option>
+                  <option value="admin">District Administrator (Final Approver)</option>
+                </select>
               </div>
 
               <div>
