@@ -33,7 +33,11 @@ import {
   Camera,
   Calendar,
   ExternalLink,
+  Pencil,
+  Plus,
 } from "lucide-react";
+import localityData from "../data/locality.json";
+import { broadcastNotification } from "../contexts/NotificationContext";
 
 type DocField = "birthCert" | "governmentId" | "picture";
 
@@ -107,6 +111,19 @@ export const MyApplication: React.FC = () => {
   const [updatingDoc, setUpdatingDoc] = useState<DocField | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DocField | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    age: "",
+    contact: "",
+    address: "",
+    province: "Negros Occidental",
+    municipality: "",
+    barangay: "",
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileFeedback, setProfileFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [creatingApp, setCreatingApp] = useState(false);
 
   // Only allow edits before final approval
   const canModify =
@@ -290,6 +307,133 @@ export const MyApplication: React.FC = () => {
     };
   }, [user]);
 
+  const openEditProfileModal = () => {
+    setProfileForm({
+      name: profile?.name || "",
+      age: profile?.age ? String(profile.age) : "",
+      contact: profile?.contact || "",
+      address: profile?.address || "",
+      province: profile?.province || localityData.provinces[0]?.name || "Negros Occidental",
+      municipality: profile?.municipality || "",
+      barangay: profile?.barangay || "",
+    });
+    setProfileFeedback(null);
+    setShowEditProfileModal(true);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (!profileForm.name.trim()) {
+      setProfileFeedback({ type: "error", msg: "Full name is required." });
+      return;
+    }
+    if (profileForm.age && Number.isNaN(Number(profileForm.age))) {
+      setProfileFeedback({ type: "error", msg: "Age must be a valid number." });
+      return;
+    }
+
+    setSavingProfile(true);
+    setProfileFeedback(null);
+    try {
+      const updatedUserPayload = {
+        name: profileForm.name.trim(),
+        age: profileForm.age ? Number(profileForm.age) : null,
+        contact: profileForm.contact.trim(),
+        address: profileForm.address.trim(),
+        province: profileForm.province,
+        municipality: profileForm.municipality,
+        barangay: profileForm.barangay.trim(),
+      };
+
+      await updateDoc(doc(db, "users", user.uid), updatedUserPayload);
+
+      // If there are existing applications, keep them in sync
+      if (apps.length > 0) {
+        await Promise.all(
+          apps.map((a) =>
+            updateDoc(doc(db, "applications", a.applicationId), {
+              userName: profileForm.name.trim(),
+              userMunicipality: profileForm.municipality,
+              userBarangay: profileForm.barangay.trim(),
+              userProvince: profileForm.province,
+            }).catch((err) => console.warn("Failed to sync application:", err)),
+          ),
+        );
+      }
+
+      await addDoc(collection(db, "auditLogs"), {
+        timestamp: new Date().toISOString(),
+        actor: profileForm.name.trim(),
+        actorRole: "arb",
+        action: "profile_updated",
+        notes: `Beneficiary updated personal profile (Age: ${profileForm.age || "—"}, Contact: ${profileForm.contact || "—"}, Address: ${profileForm.address || "—"}).`,
+      });
+
+      setProfileFeedback({ type: "success", msg: "Profile updated successfully!" });
+      setTimeout(() => {
+        setShowEditProfileModal(false);
+      }, 800);
+    } catch (err) {
+      console.error("Failed to update profile:", err);
+      setProfileFeedback({ type: "error", msg: "Failed to update profile. Please try again." });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleCreateInitialApplication = async () => {
+    if (!user) return;
+    setCreatingApp(true);
+    try {
+      const appRefId = `APP-${Math.floor(100000 + Math.random() * 900000)}`;
+      await setDoc(doc(db, "applications", appRefId), {
+        applicationId: appRefId,
+        userId: user.uid,
+        userName: profile?.name || "",
+        userEmail: profile?.email || "",
+        userMunicipality: profile?.municipality || "",
+        userBarangay: profile?.barangay || "",
+        userProvince: profile?.province || "",
+        status: "under_review",
+        submittedAt: new Date().toISOString(),
+        reviewedByStaff: null,
+        staffReviewedAt: null,
+        approvedByAdmin: null,
+        adminApprovedAt: null,
+        notes: "",
+        staffNotes: "",
+        adminNotes: "",
+        documents: {
+          birthCert: null,
+          governmentId: null,
+          picture: null,
+        },
+      });
+
+      await addDoc(collection(db, "auditLogs"), {
+        applicationId: appRefId,
+        timestamp: new Date().toISOString(),
+        actor: profile?.name || "ARB User",
+        actorRole: "arb",
+        action: "application_submitted",
+        newStatus: "under_review",
+        notes: `Beneficiary ${profile?.name || ""} submitted CLOA application ${appRefId}.`,
+      });
+
+      await broadcastNotification(
+        "staff",
+        "submitted",
+        "New ARB Application Submitted",
+        `${profile?.name || "A beneficiary"} from ${profile?.barangay || ""}, ${profile?.municipality || ""} has submitted application ${appRefId}.`,
+      );
+    } catch (err) {
+      console.error("Failed to create application:", err);
+    } finally {
+      setCreatingApp(false);
+    }
+  };
+
   // Fetch audit logs for the selected app
   useEffect(() => {
     if (!app) return;
@@ -408,16 +552,27 @@ export const MyApplication: React.FC = () => {
               <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm text-left lg:col-span-2 space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <span className="text-[10px] uppercase bg-emerald-50 border border-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
-                      Resident Beneficiary
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase bg-emerald-50 border border-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                        Resident Beneficiary
+                      </span>
+                      <button
+                        type="button"
+                        onClick={openEditProfileModal}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-lg transition-colors cursor-pointer shadow-xs"
+                        title="Edit your contact details, age, and address"
+                      >
+                        <Pencil size={11} />
+                        <span>Edit Profile</span>
+                      </button>
+                    </div>
                     <h2 className="text-xl font-bold text-slate-900 mt-2">
                       {profile?.name || "Loading profile..."}
                     </h2>
-                    <p className="text-xs text-slate-550 mt-1">
-                      {profile?.address || profile?.barangay
-                        ? `${profile.barangay}, ${profile.municipality || "Negros Occidental"}`
-                        : ""}
+                    <p className="text-xs text-slate-500 mt-1">
+                      {profile?.address || profile?.barangay || profile?.municipality
+                        ? `${profile.address ? `${profile.address}, ` : ""}${profile.barangay ? `${profile.barangay}, ` : ""}${profile.municipality || ""}${profile.province ? `, ${profile.province}` : ""}`
+                        : "No address specified — click Edit Profile to add"}
                     </p>
                   </div>
                   <div className="h-14 w-14 rounded-full bg-emerald-800/10 border border-emerald-100 flex items-center justify-center overflow-hidden">
@@ -441,7 +596,7 @@ export const MyApplication: React.FC = () => {
                       Age
                     </span>
                     <span className="text-slate-700 font-bold">
-                      {profile?.age ?? "—"} years old
+                      {profile?.age ? `${profile.age} years old` : "Not specified"}
                     </span>
                   </div>
                   <div>
@@ -449,7 +604,7 @@ export const MyApplication: React.FC = () => {
                       Contact
                     </span>
                     <span className="text-slate-700 font-bold">
-                      {profile?.contact || "—"}
+                      {profile?.contact || "Not specified"}
                     </span>
                   </div>
                   <div>
@@ -561,9 +716,31 @@ export const MyApplication: React.FC = () => {
                       )}
                     </div>
                   ) : (
-                    <div className="text-center py-6 text-slate-400 italic text-xs">
-                      No application record generated yet. Please contact the
-                      administrator.
+                    <div className="rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 p-5 text-center space-y-2.5 my-auto">
+                      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-800">
+                        <ScrollText size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          No Active CLOA Application Record
+                        </h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                          Your profile is active, but you have not initialized a land title application yet. Click below to start your application and begin tracking or uploading documents.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCreateInitialApplication}
+                        disabled={creatingApp}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-950 px-4 py-2 text-xs font-bold text-white shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {creatingApp ? (
+                          <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        ) : (
+                          <Plus size={14} />
+                        )}
+                        <span>Start CLOA Application</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1351,6 +1528,196 @@ export const MyApplication: React.FC = () => {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Beneficiary Self-Service Edit Profile Modal */}
+      {showEditProfileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-800">
+                  Beneficiary Profile
+                </p>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Edit Personal Details
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEditProfileModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="p-6 space-y-4">
+              {profileFeedback && (
+                <div
+                  className={`flex items-center gap-2 rounded-xl p-3 text-xs font-semibold ${
+                    profileFeedback.type === "success"
+                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      : "bg-red-50 text-red-800 border border-red-200"
+                  }`}
+                >
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{profileFeedback.msg}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={profileForm.name}
+                  onChange={(e) =>
+                    setProfileForm((p) => ({ ...p, name: e.target.value }))
+                  }
+                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 font-semibold focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Age
+                  </label>
+                  <input
+                    type="number"
+                    min="18"
+                    max="120"
+                    placeholder="e.g. 45"
+                    value={profileForm.age}
+                    onChange={(e) =>
+                      setProfileForm((p) => ({ ...p, age: e.target.value }))
+                    }
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 font-semibold focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Contact Number
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="0917-123-4567"
+                    value={profileForm.contact}
+                    onChange={(e) =>
+                      setProfileForm((p) => ({ ...p, contact: e.target.value }))
+                    }
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 font-semibold focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Province
+                  </label>
+                  <select
+                    value={profileForm.province}
+                    onChange={(e) =>
+                      setProfileForm((p) => ({
+                        ...p,
+                        province: e.target.value,
+                        municipality: "",
+                      }))
+                    }
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 font-semibold focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    {localityData.provinces.map((prov) => (
+                      <option key={prov.name} value={prov.name}>
+                        {prov.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Municipality / City
+                  </label>
+                  <select
+                    value={profileForm.municipality}
+                    onChange={(e) =>
+                      setProfileForm((p) => ({
+                        ...p,
+                        municipality: e.target.value,
+                      }))
+                    }
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 font-semibold focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="">Select municipality</option>
+                    {(
+                      localityData.provinces.find(
+                        (prov) => prov.name === profileForm.province,
+                      )?.municipalities || []
+                    ).map((m) => (
+                      <option key={m.name} value={m.name}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Barangay
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Tinongan"
+                    value={profileForm.barangay}
+                    onChange={(e) =>
+                      setProfileForm((p) => ({ ...p, barangay: e.target.value }))
+                    }
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 font-semibold focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Street Address / Sitio
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sitio San Jose"
+                    value={profileForm.address}
+                    onChange={(e) =>
+                      setProfileForm((p) => ({ ...p, address: e.target.value }))
+                    }
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 font-semibold focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditProfileModal(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-950 px-5 py-2 text-xs font-bold text-white transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {savingProfile && (
+                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  )}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

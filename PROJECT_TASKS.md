@@ -261,3 +261,13 @@
 - [x] 22.6 `LoanManagement.tsx` — Updated admin payment verification to settle remaining upcoming schedule installments upon full payoff
 - [x] 22.7 `types/loan.ts` — Extended `LoanPayment` and `LoanIncomeExpense` types with metadata attributes for income-payment linkage
 - [x] 22.8 Verification — `npm run build` passes with 0 TypeScript and bundle errors
+
+
+## Phase 23: ARB Self-Service Profile Management & CLOA Application Enablement (2026-10-22)
+
+- [x] 23.1 `AdminUsers.tsx` — Added optional demographics fields (Age, Contact Number, Street Address / Sitio, Barangay) to the Create User form
+- [x] 23.2 `AdminUsers.tsx` — Automated initial CLOA application creation with skipped documents for new ARB accounts created by Admin
+- [x] 23.3 `AdminUsers.tsx` — Synchronized profile updates across active application documents when Admin edits an ARB user profile
+- [x] 23.4 `MyApplication.tsx` — Added self-service "Edit Profile" modal for ARBs to update their name, age, contact, address, and municipality
+- [x] 23.5 `MyApplication.tsx` — Replaced dead-end message with actionable "Start CLOA Application" card for ARB users who don't have an application record yet
+- [x] 23.6 Verification — `npm run build` passes with 0 TypeScript and bundle errors

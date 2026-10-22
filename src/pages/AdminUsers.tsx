@@ -7,6 +7,8 @@ import {
   doc,
   setDoc,
   updateDoc,
+  query,
+  where,
 } from "firebase/firestore";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
 import {
@@ -15,6 +17,7 @@ import {
   sendPasswordResetEmail,
 } from "firebase/auth";
 import { db, firebaseConfig } from "../firebase/config";
+import { broadcastNotification } from "../contexts/NotificationContext";
 import { sendPasswordResetNotificationEmail } from "../services/emailService";
 import {
   UserPlus,
@@ -71,6 +74,9 @@ export const AdminUsers: React.FC = () => {
   const [province, setProvince] = useState("Negros Occidental");
   const [barangay, setBarangay] = useState("Isabela");
   const [municipality, setMunicipality] = useState("");
+  const [contact, setContact] = useState("");
+  const [age, setAge] = useState("");
+  const [address, setAddress] = useState("");
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editForm, setEditForm] = useState<{
     name: string;
@@ -222,7 +228,10 @@ export const AdminUsers: React.FC = () => {
         role: role,
         province: province,
         municipality: municipality,
-        barangay: barangay,
+        barangay: barangay.trim(),
+        address: address.trim(),
+        age: age ? Number(age) : null,
+        contact: contact.trim(),
         createdAt: new Date().toISOString(),
       };
 
@@ -236,16 +245,62 @@ export const AdminUsers: React.FC = () => {
         notes: `Admin created ${role} account for ${name.trim()} (${email.trim().toLowerCase()}).`,
       });
 
+      // If user is an ARB, generate their initial CLOA application with skipped docs
+      if (role === "arb") {
+        const appRefId = `APP-${Math.floor(100000 + Math.random() * 900000)}`;
+        await setDoc(doc(db, "applications", appRefId), {
+          applicationId: appRefId,
+          userId: newUserUid,
+          userName: name.trim(),
+          userEmail: email.trim().toLowerCase(),
+          userMunicipality: municipality.trim(),
+          userBarangay: barangay.trim(),
+          userProvince: province.trim(),
+          status: "under_review",
+          submittedAt: new Date().toISOString(),
+          reviewedByStaff: null,
+          staffReviewedAt: null,
+          approvedByAdmin: null,
+          adminApprovedAt: null,
+          notes: "",
+          staffNotes: "",
+          adminNotes: "",
+          documents: {
+            birthCert: null,
+            governmentId: null,
+            picture: null,
+          },
+        });
+        await writeAuditLog({
+          actor: profile,
+          action: "application_submitted",
+          entityType: "application",
+          entityId: appRefId,
+          applicationId: appRefId,
+          newStatus: "under_review",
+          notes: `Initial CLOA application ${appRefId} generated for ARB ${name.trim()} by Admin.`,
+        });
+        await broadcastNotification(
+          "staff",
+          "submitted",
+          "New ARB Application Submitted",
+          `${name.trim()} from ${barangay.trim()}, ${municipality.trim()} has been registered with application (${appRefId}).`,
+        );
+      }
+
       // Success feedback
       setFeedback({
         type: "success",
-        msg: `Successfully spawned official account: ${name.trim()} as ${role.toUpperCase()}!`,
+        msg: `Successfully spawned account: ${name.trim()} as ${role.toUpperCase()}!`,
       });
 
       // Clear Form Fields
       setName("");
       setEmail("");
       setPassword("");
+      setAge("");
+      setContact("");
+      setAddress("");
 
       // Reload directory list
       await fetchUsers();
@@ -372,6 +427,25 @@ export const AdminUsers: React.FC = () => {
         municipality: editForm.municipality,
         barangay: editForm.barangay.trim(),
       });
+
+      // If updating an ARB, sync their open applications
+      if (editingUser.role === "arb") {
+        const appQuery = query(
+          collection(db, "applications"),
+          where("userId", "==", editingUser.uid),
+        );
+        const appSnap = await getDocs(appQuery);
+        await Promise.all(
+          appSnap.docs.map((d) =>
+            updateDoc(doc(db, "applications", d.id), {
+              userName: editForm.name.trim(),
+              userMunicipality: editForm.municipality,
+              userBarangay: editForm.barangay.trim(),
+              userProvince: editForm.province,
+            }).catch((e) => console.warn("Failed to sync application:", e)),
+          ),
+        );
+      }
       await writeAuditLog({
         actor: profile,
         action: "user_profile_updated",
@@ -650,19 +724,89 @@ export const AdminUsers: React.FC = () => {
                 </select>
               </div>
 
-              {/* Office */}
+              {/* Contact number */}
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Office / District
+                  Contact Number (Optional)
                 </label>
                 <input
                   type="text"
-                  value={barangay}
-                  onChange={(e) => setBarangay(e.target.value)}
-                  placeholder="Isabela Branch Office"
+                  value={contact}
+                  onChange={(e) => setContact(e.target.value)}
+                  placeholder="0917-123-4567"
                   className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
                 />
               </div>
+
+              {/* Dynamic Demographics for ARB */}
+              {role === "arb" ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        Age (Optional)
+                      </label>
+                      <input
+                        type="number"
+                        min="18"
+                        max="120"
+                        value={age}
+                        onChange={(e) => setAge(e.target.value)}
+                        placeholder="e.g. 45"
+                        className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        Barangay
+                      </label>
+                      <input
+                        type="text"
+                        value={barangay}
+                        onChange={(e) => setBarangay(e.target.value)}
+                        placeholder="e.g. Tinongan"
+                        className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Street Address / Sitio (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="e.g. Sitio San Jose"
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-[11px] text-emerald-900 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <CheckCircle size={13} className="text-emerald-700" />
+                      <span>Automatic Application Creation</span>
+                    </p>
+                    <p className="text-emerald-800 leading-normal">
+                      Creating an ARB account automatically generates their CLOA application with skipped documents, allowing immediate title tracking and document uploads.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Office / District / Barangay
+                  </label>
+                  <input
+                    type="text"
+                    value={barangay}
+                    onChange={(e) => setBarangay(e.target.value)}
+                    placeholder="Isabela Branch Office"
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 px-3.5 text-xs text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-semibold"
+                  />
+                </div>
+              )}
 
               <div className="pt-3">
                 <button
